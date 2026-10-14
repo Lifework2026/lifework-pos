@@ -1,0 +1,198 @@
+import type { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
+import { prisma } from "@/lib/prisma";
+import { apiError } from "@/lib/api";
+import { getCurrentSession } from "@/lib/auth/server";
+import { randomStoreEan13 } from "@/lib/barcode";
+
+export const dynamic = "force-dynamic";
+
+const variantSchema = z.object({
+  size: z.string().trim().min(1).max(20),
+  color: z.string().trim().min(1).max(40),
+  sku: z.string().trim().min(1).max(40).optional().nullable(),
+  barcode: z.string().trim().regex(/^\d{8,14}$/, "Barcode must be 8 to 14 digits.").optional().nullable(),
+  price: z.number().positive().max(1_000_000),
+  initialStock: z.number().int().min(0).max(100_000),
+});
+
+const productSchema = z
+  .object({
+    name: z.string().trim().min(1).max(150),
+    brand: z.string().trim().max(80).optional().nullable(),
+    description: z.string().trim().max(2000).optional().nullable(),
+    categoryId: z.string().min(1),
+    variants: z.array(variantSchema).min(1).max(50),
+  })
+  .superRefine((value, ctx) => {
+    const seen = new Set<string>();
+    value.variants.forEach((variant, index) => {
+      const key = `${variant.size.toLowerCase()}|${variant.color.toLowerCase()}`;
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Size ${variant.size} / ${variant.color} is listed twice.`,
+          path: ["variants", index],
+        });
+      }
+      seen.add(key);
+    });
+  });
+
+function slugify(value: string): string {
+  const slug = value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "product";
+}
+
+/** Readable default SKU, e.g. "CLASSI-BLU-M". Staff can type their own instead. */
+function defaultSku(name: string, color: string, size: string): string {
+  const clean = (text: string, max: number) => text.replace(/[^A-Za-z0-9]/g, "").slice(0, max).toUpperCase();
+  return `${clean(name, 6) || "PRD"}-${clean(color, 3) || "CLR"}-${clean(size, 6) || "SZ"}`;
+}
+
+class ProductError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = "ProductError";
+  }
+}
+
+/** POST /api/admin/products: creates a product, its variants and any opening stock in one transaction. */
+export async function POST(request: NextRequest): Promise<Response> {
+  const session = await getCurrentSession();
+  if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
+  }
+
+  const parsed = productSchema.safeParse(payload);
+  if (!parsed.success) {
+    return apiError(
+      400,
+      "VALIDATION_ERROR",
+      parsed.error.issues[0]?.message ?? "Product details are invalid.",
+      parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+    );
+  }
+
+  const input = parsed.data;
+
+  try {
+    const category = await prisma.category.findUnique({ where: { id: input.categoryId }, select: { id: true } });
+    if (!category) throw new ProductError(400, "CATEGORY_NOT_FOUND", "Choose a valid category.");
+
+    // Unique slug: "classic-shirt", then "classic-shirt-2", and so on.
+    const baseSlug = slugify(input.name);
+    const similar = await prisma.product.findMany({
+      where: { slug: { startsWith: baseSlug } },
+      select: { slug: true },
+    });
+    const taken = new Set(similar.map((row) => row.slug));
+    let slug = baseSlug;
+    for (let n = 2; taken.has(slug); n += 1) slug = `${baseSlug}-${n}`;
+
+    // Resolve SKUs and barcodes, then check them against the payload and the database.
+    const resolved = input.variants.map((variant) => ({
+      size: variant.size,
+      color: variant.color,
+      price: variant.price,
+      initialStock: variant.initialStock,
+      sku: variant.sku ? variant.sku.toUpperCase() : defaultSku(input.name, variant.color, variant.size),
+      barcode: variant.barcode ?? randomStoreEan13(),
+    }));
+
+    const skus = resolved.map((variant) => variant.sku);
+    const barcodes = resolved.map((variant) => variant.barcode);
+    if (new Set(skus).size !== skus.length) {
+      throw new ProductError(400, "DUPLICATE_SKU", "Two variants use the same SKU.");
+    }
+    if (new Set(barcodes).size !== barcodes.length) {
+      throw new ProductError(400, "DUPLICATE_BARCODE", "Two variants use the same barcode.");
+    }
+
+    const conflicts = await prisma.productVariant.findMany({
+      where: { OR: [{ sku: { in: skus } }, { barcode: { in: barcodes } }] },
+      select: { sku: true, barcode: true },
+    });
+    if (conflicts.length > 0) {
+      throw new ProductError(409, "SKU_OR_BARCODE_EXISTS", "Some SKUs or barcodes are already in use.", {
+        skus: conflicts.map((row) => row.sku),
+        barcodes: conflicts.map((row) => row.barcode),
+      });
+    }
+
+    const product = await prisma.$transaction(
+      async (tx) => {
+        const created = await tx.product.create({
+          data: {
+            name: input.name,
+            slug,
+            brand: input.brand || null,
+            description: input.description || null,
+            categoryId: input.categoryId,
+            variants: {
+              create: resolved.map((variant) => ({
+                size: variant.size,
+                color: variant.color,
+                sku: variant.sku,
+                barcode: variant.barcode,
+                price: variant.price,
+                stockQuantity: variant.initialStock,
+              })),
+            },
+          },
+          select: {
+            id: true,
+            slug: true,
+            name: true,
+            variants: { select: { id: true, sku: true, stockQuantity: true } },
+          },
+        });
+
+        const stocked = created.variants.filter((variant) => variant.stockQuantity > 0);
+        if (stocked.length > 0) {
+          await tx.inventoryMovement.createMany({
+            data: stocked.map((variant) => ({
+              variantId: variant.id,
+              type: "STOCK_IN",
+              quantityChange: variant.stockQuantity,
+              stockBefore: 0,
+              stockAfter: variant.stockQuantity,
+              reference: created.slug,
+              note: "Opening stock",
+              userId: session.id,
+            })),
+          });
+        }
+
+        return created;
+      },
+      { maxWait: 5_000, timeout: 15_000 },
+    );
+
+    return Response.json({ product }, { status: 201 });
+  } catch (err) {
+    if (err instanceof ProductError) {
+      return apiError(err.status, err.code, err.message, err.details);
+    }
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return apiError(409, "SKU_OR_BARCODE_EXISTS", "That SKU or barcode is already in use. Please try again.");
+    }
+    console.error("[POST /api/admin/products]", err);
+    return apiError(500, "INTERNAL_ERROR", "Could not create the product. Nothing was saved.");
+  }
+}
