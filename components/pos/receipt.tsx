@@ -1,7 +1,8 @@
 "use client";
 
 import { formatBaht, parseMoney } from "@/lib/format";
-import { paymentLabel } from "@/lib/payment-labels";
+import { useI18n } from "@/lib/i18n/client";
+import { paymentLabel, localizedName } from "@/lib/payment-labels";
 import type { OrderDetails } from "@/lib/pos-types";
 
 const RECEIPT_ID = "receipt-print";
@@ -12,16 +13,20 @@ interface ReceiptProps {
 
 /**
  * Thermal receipt for 80mm paper. Screen styles keep it hidden unless it sits inside a
- * `.receipt-preview` container, so it can be previewed before printing.
+ * `.receipt-preview` container, so it can be previewed before printing. Printed in the active language.
  */
 export function Receipt({ order }: ReceiptProps) {
+  const { t, locale } = useI18n();
   const created = new Date(order.createdAt);
   const money = (value: string) => formatBaht(parseMoney(value));
   const discounts = [
-    { label: order.promotionName ? `Promotion: ${order.promotionName}` : "Promotion", value: order.promotionDiscount },
-    { label: "Member discount", value: order.memberDiscount },
-    { label: "Discount", value: order.manualDiscount },
-    { label: "Points redeemed", value: order.pointsDiscount },
+    {
+      label: order.promotionName ? t("receipt.promotion", { name: order.promotionName }) : t("receipt.promotionFallback"),
+      value: order.promotionDiscount,
+    },
+    { label: t("receipt.memberDiscount"), value: order.memberDiscount },
+    { label: t("receipt.discount"), value: order.manualDiscount },
+    { label: t("checkout.pointsRedeemed"), value: order.pointsDiscount },
   ].filter((row) => parseMoney(row.value) > 0);
   const voided = order.status === "VOIDED";
   const refunded = parseMoney(order.refundedAmount) > 0;
@@ -30,20 +35,20 @@ export function Receipt({ order }: ReceiptProps) {
     <div id={RECEIPT_ID} className="receipt-print" aria-hidden={voided ? undefined : true}>
       <div className="receipt-center">
         <p className="receipt-title">{order.store.name.toUpperCase()}</p>
-        <p className="receipt-strong">Branch: {order.store.branch}</p>
-        <p>Store code: {order.store.code}</p>
+        <p className="receipt-strong">{t("receipt.branch", { branch: order.store.branch })}</p>
+        <p>{t("receipt.storeCode", { code: order.store.code })}</p>
       </div>
 
       <div className="receipt-divider" />
 
       <div className="receipt-row">
-        <span>Receipt No.</span>
+        <span>{t("receipt.number")}</span>
         <span className="receipt-strong">{order.receiptNo}</span>
       </div>
       <div className="receipt-row">
-        <span>Date / time</span>
+        <span>{t("receipt.dateTime")}</span>
         <span>
-          {created.toLocaleString("en-GB", {
+          {created.toLocaleString(locale === "th" ? "th-TH-u-ca-gregory" : "en-GB", {
             timeZone: "Asia/Bangkok",
             day: "2-digit",
             month: "2-digit",
@@ -54,32 +59,30 @@ export function Receipt({ order }: ReceiptProps) {
         </span>
       </div>
       <div className="receipt-row">
-        <span>Staff</span>
+        <span>{t("receipt.staff")}</span>
         <span>{order.cashier.fullName}</span>
       </div>
       {order.member ? (
         <div className="receipt-row">
-          <span>Member</span>
+          <span>{t("receipt.member")}</span>
           <span>
             {order.member.name} ({order.member.phone})
           </span>
         </div>
       ) : null}
 
-      {voided ? <p className="receipt-center receipt-strong receipt-flag">*** VOIDED ***</p> : null}
-      {voided && order.voidReason ? <p className="receipt-center">Reason: {order.voidReason}</p> : null}
+      {voided ? <p className="receipt-center receipt-strong receipt-flag">{t("receipt.voided")}</p> : null}
+      {voided && order.voidReason ? <p className="receipt-center">{t("receipt.reason", { reason: order.voidReason })}</p> : null}
 
       <div className="receipt-divider" />
 
       {order.items.map((item) => (
         <div key={item.id} className="receipt-item">
           <p>
-            {item.productName}
-            {item.isBag ? " (bag)" : ""}
+            {localizedName(locale, item.productName, item.productNameTh)}
+            {item.isBag ? ` ${t("receipt.bag")}` : ""}
           </p>
-          <p className="receipt-sub">
-            {item.isBag ? item.sku : `${item.size} / ${item.color} · ${item.sku}`}
-          </p>
+          <p className="receipt-sub">{item.isBag ? item.sku : `${item.size} / ${item.color} · ${item.sku}`}</p>
           <div className="receipt-row">
             <span>
               {item.quantity} x {money(item.unitPrice)}
@@ -88,13 +91,13 @@ export function Receipt({ order }: ReceiptProps) {
           </div>
           {parseMoney(item.discountAmount) > 0 ? (
             <div className="receipt-row receipt-sub">
-              <span>Discount</span>
+              <span>{t("receipt.discount")}</span>
               <span>-{money(item.discountAmount)}</span>
             </div>
           ) : null}
           {item.refundedQuantity > 0 ? (
             <div className="receipt-row receipt-sub">
-              <span>Refunded {item.refundedQuantity} of {item.quantity}</span>
+              <span>{t("receipt.refundedOf", { qty: item.refundedQuantity, total: item.quantity })}</span>
               <span>-{money(item.refundedAmount)}</span>
             </div>
           ) : null}
@@ -104,7 +107,7 @@ export function Receipt({ order }: ReceiptProps) {
       <div className="receipt-divider" />
 
       <div className="receipt-row">
-        <span>Subtotal</span>
+        <span>{t("receipt.subtotal")}</span>
         <span>{money(order.subtotal)}</span>
       </div>
       {discounts.map((row) => (
@@ -114,7 +117,7 @@ export function Receipt({ order }: ReceiptProps) {
         </div>
       ))}
       <div className="receipt-row receipt-total">
-        <span>TOTAL</span>
+        <span>{t("receipt.total")}</span>
         <span>{money(order.totalAmount)}</span>
       </div>
 
@@ -123,25 +126,25 @@ export function Receipt({ order }: ReceiptProps) {
       {order.payments.map((payment, index) => (
         <div key={`${payment.method}-${index}`}>
           <div className="receipt-row">
-            <span>{paymentLabel(payment.method)}</span>
+            <span>{paymentLabel(payment.method, locale)}</span>
             <span>{money(payment.amount)}</span>
           </div>
-          {payment.reference ? <p className="receipt-sub">Ref: {payment.reference}</p> : null}
+          {payment.reference ? <p className="receipt-sub">{t("receipt.ref", { ref: payment.reference })}</p> : null}
           {payment.edcRef?.transactionRef ? (
             <p className="receipt-sub">
-              Card ref: {payment.edcRef.transactionRef}
+              {t("receipt.cardRef", { ref: payment.edcRef.transactionRef })}
               {payment.edcRef.cardMask ? ` ${payment.edcRef.cardMask}` : ""}
             </p>
           ) : null}
           {payment.tendered ? (
             <div className="receipt-row receipt-sub">
-              <span>Cash received</span>
+              <span>{t("receipt.cashReceived")}</span>
               <span>{money(payment.tendered)}</span>
             </div>
           ) : null}
           {payment.changeGiven && parseMoney(payment.changeGiven) > 0 ? (
             <div className="receipt-row receipt-sub">
-              <span>Change</span>
+              <span>{t("receipt.change")}</span>
               <span>{money(payment.changeGiven)}</span>
             </div>
           ) : null}
@@ -150,7 +153,7 @@ export function Receipt({ order }: ReceiptProps) {
 
       {refunded ? (
         <div className="receipt-row receipt-strong">
-          <span>Total refunded</span>
+          <span>{t("receipt.totalRefunded")}</span>
           <span>{money(order.refundedAmount)}</span>
         </div>
       ) : null}
@@ -159,11 +162,11 @@ export function Receipt({ order }: ReceiptProps) {
         <>
           <div className="receipt-divider" />
           <div className="receipt-row">
-            <span>Points earned</span>
+            <span>{t("receipt.pointsEarned")}</span>
             <span>{order.member.pointsEarned}</span>
           </div>
           <div className="receipt-row">
-            <span>Points redeemed</span>
+            <span>{t("receipt.pointsRedeemed")}</span>
             <span>{order.member.pointsRedeemed}</span>
           </div>
         </>
@@ -172,7 +175,7 @@ export function Receipt({ order }: ReceiptProps) {
       <div className="receipt-divider" />
 
       <div className="receipt-center">
-        <p>Thank you for shopping at {order.store.name}</p>
+        <p>{t("receipt.thanks", { store: order.store.name })}</p>
       </div>
     </div>
   );

@@ -47,7 +47,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         price: true,
         stockQuantity: true,
         product: {
-          select: { id: true, name: true, brand: true, categoryId: true },
+          select: { id: true, name: true, nameTh: true, brand: true, categoryId: true },
         },
       },
       orderBy: [{ product: { name: "asc" } }, { color: "asc" }, { size: "asc" }],
@@ -67,6 +67,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           id: v.product.id,
           name: v.product.name,
           brand: v.product.brand,
+          nameTh: v.product.nameTh,
           categoryId: v.product.categoryId,
         },
       })),

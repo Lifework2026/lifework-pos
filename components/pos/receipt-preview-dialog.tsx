@@ -3,6 +3,7 @@
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useI18n } from "@/lib/i18n/client";
 import type { OrderDetails } from "@/lib/pos-types";
 import { Receipt } from "@/components/pos/receipt";
 
@@ -19,15 +20,14 @@ interface ReceiptPreviewDialogProps {
  * Shows the receipt as it will print, so staff can check it before paper comes out.
  * Printing is a separate, deliberate action.
  */
-export function ReceiptPreviewDialog({ order, open, onOpenChange, title = "Receipt preview", extraActions }: ReceiptPreviewDialogProps) {
+export function ReceiptPreviewDialog({ order, open, onOpenChange, title, extraActions }: ReceiptPreviewDialogProps) {
+  const { t } = useI18n();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {order ? `${order.receiptNo} · review, then print` : "No receipt"}
-          </DialogDescription>
+          <DialogTitle>{title ?? t("preview.title")}</DialogTitle>
+          <DialogDescription>{order ? t("preview.subtitle", { receipt: order.receiptNo }) : t("preview.none")}</DialogDescription>
         </DialogHeader>
 
         {order ? (
@@ -40,10 +40,10 @@ export function ReceiptPreviewDialog({ order, open, onOpenChange, title = "Recei
           <div className="flex gap-2">{extraActions}</div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Close
+              {t("common.close")}
             </Button>
             <Button onClick={() => window.print()} disabled={!order}>
-              <Printer className="size-4" /> Print
+              <Printer className="size-4" /> {t("common.print")}
             </Button>
           </div>
         </DialogFooter>

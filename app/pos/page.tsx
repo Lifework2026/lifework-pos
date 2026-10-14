@@ -7,10 +7,12 @@ import { CartPanel } from "@/components/pos/cart-panel";
 import { CheckoutDialog } from "@/components/pos/checkout-dialog";
 import { ProductPanel } from "@/components/pos/product-panel";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { LocaleToggle } from "@/components/locale-toggle";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import { useI18n } from "@/lib/i18n/client";
 import type { ApiErrorBody, OrderDetails, VariantSummary } from "@/lib/pos-types";
 import type { SessionUser } from "@/lib/auth/session";
 import { useCartStore, type CartVariant } from "@/store/useCartStore";
@@ -19,6 +21,7 @@ function toCartVariant(variant: VariantSummary): CartVariant {
   return {
     variantId: variant.id,
     name: variant.product.name,
+    nameTh: variant.product.nameTh,
     size: variant.size,
     color: variant.color,
     sku: variant.sku,
@@ -29,6 +32,7 @@ function toCartVariant(variant: VariantSummary): CartVariant {
 }
 
 export default function PosPage() {
+  const { t } = useI18n();
   const addItemByBarcode = useCartStore((state) => state.addItemByBarcode);
   const clearCart = useCartStore((state) => state.clearCart);
 
@@ -41,15 +45,17 @@ export default function PosPage() {
     const controller = new AbortController();
     fetch("/api/auth/me", { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
-        if (!res.ok) throw new Error("Session expired.");
+        if (!res.ok) throw new Error("session");
         const body: { user: SessionUser } = await res.json();
         setUser(body.user);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        toast.add({ title: "Session expired", description: "Please sign in again.", type: "error" });
+        toast.add({ title: t("pos.sessionExpired"), description: t("pos.signInAgain"), type: "error" });
       });
     return () => controller.abort();
+    // The toast is shown once, in the language active at sign-in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addVariant = useCallback(
@@ -57,15 +63,15 @@ export default function PosPage() {
       const result = addItemByBarcode(toCartVariant(variant));
       if (!result.ok) {
         toast.add({
-          title: "Out of stock",
-          description: `${variant.product.name} (${variant.sku}): only ${result.available} available.`,
+          title: t("pos.outOfStock"),
+          description: t("pos.onlyAvailable", { name: variant.product.name, sku: variant.sku, count: result.available }),
           type: "error",
         });
         return false;
       }
       return true;
     },
-    [addItemByBarcode],
+    [addItemByBarcode, t],
   );
 
   const handleScan = useCallback(
@@ -77,22 +83,22 @@ export default function PosPage() {
         });
 
         if (res.status === 404) {
-          toast.add({ title: "Not found", description: `No active product for barcode ${barcode}.`, type: "error" });
+          toast.add({ title: t("pos.notFound"), description: t("pos.noActiveProduct", { code: barcode }), type: "error" });
           return;
         }
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as ApiErrorBody | null;
-          toast.add({ title: "Scan failed", description: body?.message ?? "Try scanning again.", type: "error" });
+          toast.add({ title: t("pos.scanFailed"), description: body?.message ?? t("pos.scanNetwork"), type: "error" });
           return;
         }
 
         const body: { variant: VariantSummary } = await res.json();
         addVariant(body.variant);
       } catch {
-        toast.add({ title: "Scan failed", description: "Network error. Try scanning again.", type: "error" });
+        toast.add({ title: t("pos.scanFailed"), description: t("pos.scanNetwork"), type: "error" });
       }
     },
-    [addVariant],
+    [addVariant, t],
   );
 
   useBarcodeScanner({
@@ -116,11 +122,12 @@ export default function PosPage() {
           {lastSale ? (
             <p className="flex items-center gap-1 text-xs text-muted-foreground">
               <CheckCircle2 className="size-3.5 text-emerald-600" />
-              Last sale {lastSale.receiptNo}
+              {t("pos.lastSale", { receipt: lastSale.receiptNo })}
             </p>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <LocaleToggle />
           {user ? (
             <Badge variant="outline" className="gap-1 py-1">
               <UserRound className="size-3.5" />
@@ -130,7 +137,7 @@ export default function PosPage() {
           {isManager ? (
             <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
               <LayoutDashboard className="size-4" />
-              Back office
+              {t("common.backOffice")}
             </Link>
           ) : null}
           <SignOutButton />
@@ -139,11 +146,7 @@ export default function PosPage() {
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_400px]">
         <div className="min-h-0 rounded-xl border bg-background p-4">
-          <ProductPanel
-            onSelectVariant={addVariant}
-            scannerActive={!checkoutOpen}
-            lastScannedBarcode={lastScannedBarcode}
-          />
+          <ProductPanel onSelectVariant={addVariant} scannerActive={!checkoutOpen} lastScannedBarcode={lastScannedBarcode} />
         </div>
 
         <div className="min-h-[24rem] lg:min-h-0">

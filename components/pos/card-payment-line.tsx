@@ -5,15 +5,17 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatBaht } from "@/lib/format";
+import { useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/messages";
 import type { ApiErrorBody } from "@/lib/pos-types";
 import type { EdcPaymentDto } from "@/lib/edc/types";
 
 const POLL_INTERVAL_MS = 1_500;
 
-const FAILURE_TITLES: Record<string, string> = {
-  FAILED: "Card payment failed",
-  CANCELLED: "Card payment cancelled",
-  TIMED_OUT: "Card payment timed out",
+const FAILURE_KEYS: Record<string, MessageKey> = {
+  FAILED: "card.failed",
+  CANCELLED: "card.cancelled",
+  TIMED_OUT: "card.timedOut",
 };
 
 export interface ApprovedCard {
@@ -35,6 +37,7 @@ interface CardPaymentLineProps {
  * Also offers the manual slip-reference fallback for a dead bridge.
  */
 export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange }: CardPaymentLineProps) {
+  const { t } = useI18n();
   const [payment, setPayment] = useState<EdcPaymentDto | null>(null);
   const [starting, setStarting] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -66,7 +69,7 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
         const res = await fetch(`/api/edc/payments/${payment.id}`, { cache: "no-store" });
         const body = (await res.json().catch(() => null)) as { payment?: EdcPaymentDto } & ApiErrorBody;
         if (!res.ok || !body.payment) {
-          setError(body?.message ?? "Could not check the card terminal. Retrying...");
+          setError(body?.message ?? t("card.notResponding"));
           setPayment((prev) => (prev ? { ...prev } : prev));
           return;
         }
@@ -77,7 +80,7 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
       }
     }, POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [payment]);
+  }, [payment, t]);
 
   async function start(): Promise<void> {
     if (starting) return;
@@ -91,12 +94,12 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
       });
       const body = (await res.json().catch(() => null)) as { payment?: EdcPaymentDto } & ApiErrorBody;
       if (!res.ok || !body.payment) {
-        setError(body?.message ?? "Could not reach the card terminal. Try again or enter the reference manually.");
+        setError(body?.message ?? t("card.notResponding"));
         return;
       }
       setPayment(body.payment);
     } catch {
-      setError("Network error. Check the connection and try again.");
+      setError(t("common.networkError"));
     } finally {
       setStarting(false);
     }
@@ -109,12 +112,12 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
       const res = await fetch(`/api/edc/payments/${payment.id}/cancel`, { method: "POST" });
       const body = (await res.json().catch(() => null)) as { payment?: EdcPaymentDto } & ApiErrorBody;
       if (!res.ok || !body.payment) {
-        setError(body?.message ?? "Could not cancel on the terminal. Check the terminal before retrying.");
+        setError(body?.message ?? t("card.notResponding"));
         return;
       }
       setPayment(body.payment);
     } catch {
-      setError("Network error while cancelling. Check the terminal before retrying.");
+      setError(t("common.networkError"));
     }
   }
 
@@ -128,21 +131,21 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
       });
       const body = (await res.json().catch(() => null)) as { payment?: EdcPaymentDto } & ApiErrorBody;
       if (!res.ok || !body.payment) {
-        setError(body?.message ?? "Could not record the reference.");
+        setError(body?.message ?? t("common.networkError"));
         return;
       }
       setManualOpen(false);
       setPayment(body.payment);
     } catch {
-      setError("Network error. Check the connection and try again.");
+      setError(t("common.networkError"));
     }
   }
 
   if (approved && payment) {
     return (
       <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-800">
-        Approved {formatBaht(amount)}
-        {payment.transactionRef ? ` · Ref ${payment.transactionRef}` : ""}
+        {t("card.approved", { amount: formatBaht(amount) })}
+        {payment.transactionRef ? ` · ${t("card.ref", { ref: payment.transactionRef })}` : ""}
         {payment.cardMask ? ` · ${payment.cardMask}` : ""}
       </div>
     );
@@ -151,34 +154,30 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
   return (
     <div className="flex flex-col gap-3">
       {!payment ? (
-        <Button size="lg" onClick={start} disabled={disabled || starting || amount <= 0}>
+        <Button size="lg" onClick={start} disabled={disabled || starting || amount <= 0} className="h-auto min-h-11 whitespace-normal py-2">
           {starting ? <Loader2 className="size-4 animate-spin" /> : null}
-          Send {formatBaht(amount)} to card terminal
+          {t("card.send", { amount: formatBaht(amount) })}
         </Button>
       ) : null}
 
       {pending ? (
         <div className="flex flex-col items-center gap-2 rounded-md border p-4 text-center">
           <Loader2 className="size-7 animate-spin text-primary" />
-          <p className="font-medium">Awaiting EDC card tap/insert...</p>
+          <p className="font-medium">{t("card.awaiting")}</p>
           <p className="text-sm text-muted-foreground">{formatBaht(amount)}</p>
-          {payment.terminalUnreachable ? (
-            <p className="text-sm text-amber-600">
-              The terminal is not responding. If the card was already processed, cancel here and enter the slip reference.
-            </p>
-          ) : null}
+          {payment.terminalUnreachable ? <p className="text-sm text-amber-600">{t("card.notResponding")}</p> : null}
           <Button variant="outline" onClick={cancel}>
-            Cancel on terminal
+            {t("card.cancelTerminal")}
           </Button>
         </div>
       ) : null}
 
-      {payment && (payment.status === "FAILED" || payment.status === "CANCELLED" || payment.status === "TIMED_OUT") ? (
+      {payment && FAILURE_KEYS[payment.status] ? (
         <div className="flex flex-col gap-2">
-          <p className="font-medium text-destructive">{FAILURE_TITLES[payment.status] ?? "Card payment not completed"}</p>
+          <p className="font-medium text-destructive">{t(FAILURE_KEYS[payment.status] ?? "card.notCompleted")}</p>
           {payment.failureReason ? <p className="text-sm text-muted-foreground">{payment.failureReason}</p> : null}
           <Button variant="outline" onClick={() => setPayment(null)}>
-            Try again
+            {t("common.retry")}
           </Button>
         </div>
       ) : null}
@@ -189,14 +188,14 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
           className="self-start text-sm text-muted-foreground underline underline-offset-4"
           onClick={() => setManualOpen(true)}
         >
-          Terminal not working? Enter the slip reference manually
+          {t("card.manualToggle")}
         </button>
       ) : null}
 
       {manualOpen ? (
         <div className="flex flex-col gap-2">
           <label htmlFor={`manual-ref-${amount}`} className="text-sm font-medium">
-            Terminal transaction reference
+            {t("card.terminalRef")}
           </label>
           <Input
             id={`manual-ref-${amount}`}
@@ -205,14 +204,14 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
             placeholder="e.g. 0012345678"
             className="font-mono"
           />
-          <label className="text-sm font-medium">Approval code (optional)</label>
+          <label className="text-sm font-medium">{t("card.approvalCode")}</label>
           <Input value={manualApproval} onChange={(event) => setManualApproval(event.target.value)} className="font-mono" />
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setManualOpen(false)}>
-              Back
+              {t("card.back")}
             </Button>
             <Button className="flex-1" onClick={recordManual} disabled={manualRef.trim().length < 4}>
-              Record card payment
+              {t("card.record")}
             </Button>
           </div>
         </div>

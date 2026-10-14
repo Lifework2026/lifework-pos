@@ -18,6 +18,18 @@ const ACCOUNTS = [
   { username: "cashier", fullName: "Lifework Cashier", role: Role.CASHIER, envKey: "CASHIER_PASSWORD" },
 ] as const;
 
+/** Thai display names. Only filled in where a row has none, so later edits are never overwritten. */
+const THAI_NAMES: Record<string, string> = {
+  "supplies": "วัสดุสิ้นเปลือง",
+  "shopping-bag": "ถุงช้อปปิ้ง",
+  "shirts": "เสื้อ",
+  "pants": "กางเกง",
+  "classic-oxford-shirt": "เสื้อเชิ้ตออกซ์ฟอร์ดคลาสสิก",
+  "relaxed-linen-shirt": "เสื้อเชิ้ตผ้าลินินทรงหลวม",
+  "slim-chino-pants": "กางเกงชิโนทรงสลิม",
+  "wide-denim-jeans": "กางเกงยีนส์ขากว้าง",
+};
+
 /** Shopping bags are sold as line items, so they are ordinary variants with their own stock. */
 const BAGS = [
   { sku: "BAG-SMALL", size: "Small", price: "2.00", barcode: ean13("885000900001") },
@@ -124,12 +136,20 @@ async function seedAccounts(): Promise<void> {
   }
 }
 
+async function fillThaiNames(): Promise<void> {
+  for (const [slug, nameTh] of Object.entries(THAI_NAMES)) {
+    await prisma.category.updateMany({ where: { slug, nameTh: null }, data: { nameTh } });
+    await prisma.product.updateMany({ where: { slug, nameTh: null }, data: { nameTh } });
+  }
+}
+
 async function seedBags(): Promise<void> {
   const category = await prisma.category.upsert({
     where: { slug: "supplies" },
     update: {},
     create: { name: "Supplies", slug: "supplies" },
   });
+  await fillThaiNames();
   const product = await prisma.product.upsert({
     where: { slug: "shopping-bag" },
     update: {},
@@ -217,6 +237,7 @@ async function main(): Promise<void> {
   await seedAccounts();
   await seedBags();
   const demoCreated = await seedDemoCatalog();
+  await fillThaiNames();
 
   const [users, products, variants] = await Promise.all([
     prisma.user.count(),

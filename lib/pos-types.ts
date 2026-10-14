@@ -12,6 +12,7 @@ export interface VariantSummary {
   product: {
     id: string;
     name: string;
+    nameTh: string | null;
     brand: string | null;
     categoryId: string;
   };
@@ -20,6 +21,7 @@ export interface VariantSummary {
 export interface CategorySummary {
   id: string;
   name: string;
+  nameTh: string | null;
   slug: string;
 }
 
@@ -45,6 +47,7 @@ export interface OrderItemDetails {
   id: string;
   variantId: string;
   productName: string;
+  productNameTh: string | null;
   sku: string;
   barcode: string;
   size: string;

@@ -8,8 +8,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { formatBaht } from "@/lib/format";
-import type { ApiErrorBody, OrderDetails } from "@/lib/pos-types";
+import { useI18n } from "@/lib/i18n/client";
 import { paymentLabel } from "@/lib/payment-labels";
+import type { ApiErrorBody, OrderDetails } from "@/lib/pos-types";
 
 interface VoidDialogProps {
   order: OrderDetails;
@@ -19,6 +20,7 @@ interface VoidDialogProps {
 
 /** Voids a whole bill. Stock comes back, member points are reversed, and an audit entry is written. */
 export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
+  const { t, locale } = useI18n();
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -37,14 +39,14 @@ export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
       });
       const body = (await res.json().catch(() => null)) as ApiErrorBody | null;
       if (!res.ok) {
-        setError(body?.message ?? "Void failed. Nothing was changed.");
+        setError(body?.message ?? t("void.failed"));
         return;
       }
-      toast.add({ title: "Bill voided", description: `${order.receiptNo} is voided and stock was restored.`, type: "success" });
+      toast.add({ title: t("void.done"), description: t("void.doneBody", { receipt: order.receiptNo }), type: "success" });
       onOpenChange(false);
       router.refresh();
     } catch {
-      setError("Network error. Nothing was changed. Check the connection and try again.");
+      setError(t("common.networkError"));
     } finally {
       setSubmitting(false);
     }
@@ -54,22 +56,24 @@ export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
     <Dialog open={open} onOpenChange={(next) => !submitting && onOpenChange(next)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Void bill {order.receiptNo}</DialogTitle>
-          <DialogDescription>This cancels the whole sale. It cannot be undone.</DialogDescription>
+          <DialogTitle>{t("void.title", { receipt: order.receiptNo })}</DialogTitle>
+          <DialogDescription>{t("void.desc")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3 text-sm">
           <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-            <li>{restocked} unit(s) go back into stock.</li>
-            <li>Earned member points are reversed, and redeemed points are returned.</li>
+            <li>{t("void.restock", { count: restocked })}</li>
+            <li>{t("void.points")}</li>
             <li>
-              Payments are not reversed automatically. Refund {formatBaht(Number(order.totalAmount))} by{" "}
-              {order.payments.map((p) => paymentLabel(p.method)).join(" + ")} separately if money was taken.
+              {t("void.payments", {
+                amount: formatBaht(Number(order.totalAmount)),
+                methods: order.payments.map((p) => paymentLabel(p.method, locale)).join(" + "),
+              })}
             </li>
           </ul>
           <label className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Reason (required)</span>
-            <Input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={300} placeholder="e.g. Keyed in by mistake" />
+            <span className="text-muted-foreground">{t("void.reason")}</span>
+            <Input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={300} placeholder={t("void.reasonPlaceholder")} />
           </label>
           {error ? (
             <p role="alert" className="text-destructive">
@@ -80,11 +84,11 @@ export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
-            Keep sale
+            {t("void.keep")}
           </Button>
           <Button variant="destructive" onClick={submit} disabled={submitting || reason.trim().length < 3}>
             {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-            Void bill
+            {t("void.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

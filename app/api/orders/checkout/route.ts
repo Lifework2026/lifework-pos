@@ -127,6 +127,7 @@ async function placeOrder(tx: Prisma.TransactionClient, input: CheckoutInput, ca
           return {
             variantId: line.variantId,
             productName: line.productName,
+            productNameTh: line.productNameTh,
             sku: line.sku,
             barcode: line.barcode,
             size: line.size,

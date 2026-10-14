@@ -17,6 +17,7 @@ export interface PricedLine {
   key: string;
   variantId: string;
   productName: string;
+  productNameTh: string | null;
   categoryId: string;
   sku: string;
   barcode: string;
@@ -37,8 +38,21 @@ export interface PricedBasket {
 
 const MAX_QUANTITY = 999;
 
+const variantSelect = {
+  id: true,
+  sku: true,
+  barcode: true,
+  size: true,
+  color: true,
+  price: true,
+  stockQuantity: true,
+  isActive: true,
+  product: { select: { name: true, nameTh: true, isActive: true, categoryId: true } },
+} as const;
+
 /**
  * Loads prices, stock, member and promotion from the database and runs the pricing engine.
+ * The four reads run in parallel, which keeps the round trips to the database to one.
  * Accepts the Prisma client or a transaction client, so checkout can price inside its transaction.
  */
 export async function priceBasket(db: Prisma.TransactionClient, input: BasketInput): Promise<PricedBasket> {
@@ -64,22 +78,25 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
     }
   }
 
-  const variantRows = await db.productVariant.findMany({
-    where: { id: { in: Array.from(merged.keys()) } },
-    select: {
-      id: true,
-      sku: true,
-      barcode: true,
-      size: true,
-      color: true,
-      price: true,
-      stockQuantity: true,
-      isActive: true,
-      product: { select: { name: true, isActive: true, categoryId: true } },
-    },
-  });
-  const variantById = new Map(variantRows.map((row) => [row.id, row]));
+  const now = new Date();
+  const [variantRows, bagRow, memberRow, promotionRow] = await Promise.all([
+    db.productVariant.findMany({
+      where: { id: { in: Array.from(merged.keys()) } },
+      select: variantSelect,
+    }),
+    input.bag !== "NONE"
+      ? db.productVariant.findUnique({ where: { sku: BAG_SKUS[input.bag] }, select: variantSelect })
+      : Promise.resolve(null),
+    input.memberId
+      ? db.member.findUnique({
+          where: { id: input.memberId },
+          select: { id: true, name: true, phone: true, points: true, isActive: true },
+        })
+      : Promise.resolve(null),
+    input.promotionId ? db.promotion.findUnique({ where: { id: input.promotionId } }) : Promise.resolve(null),
+  ]);
 
+  const variantById = new Map(variantRows.map((row) => [row.id, row]));
   const lines: PricedLine[] = [];
   for (const [variantId, requested] of Array.from(merged.entries())) {
     const variant = variantById.get(variantId);
@@ -111,6 +128,7 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
       key: variantId,
       variantId,
       productName: variant.product.name,
+      productNameTh: variant.product.nameTh,
       categoryId: variant.product.categoryId,
       sku: variant.sku,
       barcode: variant.barcode,
@@ -124,21 +142,7 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
   }
 
   if (input.bag !== "NONE") {
-    const bagSku = BAG_SKUS[input.bag];
-    const bag = await db.productVariant.findUnique({
-      where: { sku: bagSku },
-      select: {
-        id: true,
-        sku: true,
-        barcode: true,
-        size: true,
-        color: true,
-        price: true,
-        stockQuantity: true,
-        isActive: true,
-        product: { select: { name: true, isActive: true, categoryId: true } },
-      },
-    });
+    const bag = bagRow;
     if (!bag || !bag.isActive || !bag.product.isActive) {
       throw new OrderError(409, "BAG_NOT_CONFIGURED", `The ${input.bag.toLowerCase()} shopping bag is not set up.`);
     }
@@ -149,6 +153,7 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
       key: `bag:${bag.id}`,
       variantId: bag.id,
       productName: bag.product.name,
+      productNameTh: bag.product.nameTh,
       categoryId: bag.product.categoryId,
       sku: bag.sku,
       barcode: bag.barcode,
@@ -163,14 +168,10 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
 
   let member: PricedBasket["member"] = null;
   if (input.memberId) {
-    const row = await db.member.findUnique({
-      where: { id: input.memberId },
-      select: { id: true, name: true, phone: true, points: true, isActive: true },
-    });
-    if (!row || !row.isActive) {
+    if (!memberRow || !memberRow.isActive) {
       throw new OrderError(404, "MEMBER_NOT_FOUND", "That member is not found or inactive.");
     }
-    member = { id: row.id, name: row.name, phone: row.phone, points: row.points };
+    member = { id: memberRow.id, name: memberRow.name, phone: memberRow.phone, points: memberRow.points };
   }
   if (input.redeemPoints > 0 && !member) {
     throw new OrderError(400, "MEMBER_REQUIRED", "Select a member before redeeming points.");
@@ -181,8 +182,7 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
   let promotionScope: "ORDER" | "CATEGORY" = "ORDER";
   let promotionCategoryId: string | null = null;
   if (input.promotionId) {
-    const now = new Date();
-    const row = await db.promotion.findUnique({ where: { id: input.promotionId } });
+    const row = promotionRow;
     if (!row || !row.isActive || row.startsAt > now || row.endsAt < now) {
       throw new OrderError(400, "PROMOTION_NOT_AVAILABLE", "That promotion is not active today.");
     }
@@ -201,7 +201,6 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
   }
 
   const manualDiscountSatang = bahtToSatang(input.manualDiscount);
-  const pointValue = LOYALTY.pointValueSatang;
 
   let pricing: PricingResult;
   try {
@@ -211,16 +210,14 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
         unitPriceSatang: line.unitPriceSatang,
         quantity: line.quantity,
         isBag: line.isBag,
-        promoEligible:
-          promotion !== null &&
-          (promotionScope === "ORDER" || line.categoryId === promotionCategoryId),
+        promoEligible: promotion !== null && (promotionScope === "ORDER" || line.categoryId === promotionCategoryId),
       })),
       promotion: pricingPromotion,
       memberDiscountScaled: member ? MEMBER_DISCOUNT_SCALED : 0,
       manualDiscountSatang,
       pointsToRedeem: input.redeemPoints,
       pointsBalance: member?.points ?? 0,
-      pointValueSatang: pointValue,
+      pointValueSatang: LOYALTY.pointValueSatang,
       earnThresholdSatang: LOYALTY.earnThresholdSatang,
       isMember: member !== null,
     });

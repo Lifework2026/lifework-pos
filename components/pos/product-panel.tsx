@@ -8,6 +8,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatBaht, parseMoney } from "@/lib/format";
+import { useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/messages";
+import { localizedName } from "@/lib/payment-labels";
 import type { CategorySummary, VariantSummary } from "@/lib/pos-types";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -19,25 +22,26 @@ interface ProductPanelProps {
 }
 
 export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcode }: ProductPanelProps) {
+  const { t, locale } = useI18n();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
   const [variants, setVariants] = useState<VariantSummary[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     fetch("/api/categories", { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
-        if (!res.ok) throw new Error("Could not load categories.");
+        if (!res.ok) throw new Error("categories");
         const body: { categories: CategorySummary[] } = await res.json();
         setCategories(body.categories);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setError("Could not load categories.");
+        setErrorKey("pos.categoriesError");
       });
     return () => controller.abort();
   }, []);
@@ -56,14 +60,14 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
     setLoading(true);
     fetch(`/api/products?${params.toString()}`, { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
-        if (!res.ok) throw new Error("Could not load products.");
+        if (!res.ok) throw new Error("products");
         const body: { variants: VariantSummary[] } = await res.json();
         setVariants(body.variants);
-        setError(null);
+        setErrorKey(null);
       })
       .catch((err: unknown) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
-        setError("Could not load products. Check the connection and try again.");
+        setErrorKey("pos.productsError");
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
@@ -82,10 +86,10 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
           />
           <Badge variant={scannerActive ? "secondary" : "outline"} className="gap-1">
             <Radio className="size-3" />
-            {scannerActive ? "Scanner ready" : "Scanner paused"}
+            {scannerActive ? t("pos.scannerReady") : t("pos.scannerPaused")}
           </Badge>
           {lastScannedBarcode ? (
-            <span className="font-mono text-xs text-muted-foreground">Last scan: {lastScannedBarcode}</span>
+            <span className="font-mono text-xs text-muted-foreground">{t("pos.lastScan", { code: lastScannedBarcode })}</span>
           ) : null}
         </div>
       </div>
@@ -95,9 +99,9 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
         <Input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name, brand, SKU or barcode"
+          placeholder={t("pos.searchPlaceholder")}
           className="h-11 pl-9 text-base"
-          aria-label="Search products"
+          aria-label={t("pos.searchLabel")}
           autoComplete="off"
           onKeyDown={(event) => {
             // Leaving the field hands keyboard input back to the barcode scanner.
@@ -106,13 +110,9 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
         />
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant={categoryId === null ? "default" : "outline"}
-          onClick={() => setCategoryId(null)}
-        >
-          All
+      <div className="flex flex-wrap gap-2" role="group" aria-label={t("pos.products")}>
+        <Button size="sm" variant={categoryId === null ? "default" : "outline"} onClick={() => setCategoryId(null)}>
+          {t("pos.all")}
         </Button>
         {categories.map((category) => (
           <Button
@@ -121,26 +121,26 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
             variant={categoryId === category.id ? "default" : "outline"}
             onClick={() => setCategoryId(category.id)}
           >
-            {category.name}
+            {localizedName(locale, category.name, category.nameTh)}
           </Button>
         ))}
       </div>
 
-      {error ? (
+      {errorKey ? (
         <p role="alert" className="text-sm text-destructive">
-          {error}
+          {t(errorKey)}
         </p>
       ) : null}
 
       <ScrollArea className="min-h-0 flex-1 pr-3">
         {loading && variants.length === 0 ? (
           <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> Loading products...
+            <Loader2 className="size-4 animate-spin" /> {t("pos.loadingProducts")}
           </div>
         ) : variants.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-center text-sm text-muted-foreground">
             <Package className="size-8" />
-            No products match this search.
+            {t("pos.noMatch")}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
@@ -157,20 +157,18 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
                   <Card className="h-full transition-colors hover:border-primary/60">
                     <CardContent className="flex flex-col gap-2 p-4">
                       <div className="flex items-start justify-between gap-2">
-                        <span className="line-clamp-2 font-medium leading-snug">{variant.product.name}</span>
-                        {outOfStock ? <Badge variant="destructive">Sold out</Badge> : null}
+                        <span className="line-clamp-2 font-medium leading-snug">
+                          {localizedName(locale, variant.product.name, variant.product.nameTh)}
+                        </span>
+                        {outOfStock ? <Badge variant="destructive">{t("pos.soldOut")}</Badge> : null}
                       </div>
                       <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                        <Badge variant="outline">Size {variant.size}</Badge>
+                        <Badge variant="outline">{t("pos.size", { size: variant.size })}</Badge>
                         <Badge variant="outline">{variant.color}</Badge>
                       </div>
                       <div className="flex items-end justify-between gap-2">
-                        <span className="text-base font-semibold">
-                          {formatBaht(parseMoney(variant.price))}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {variant.stockQuantity} left
-                        </span>
+                        <span className="text-base font-semibold">{formatBaht(parseMoney(variant.price))}</span>
+                        <span className="text-xs text-muted-foreground">{t("pos.left", { count: variant.stockQuantity })}</span>
                       </div>
                       <span className="font-mono text-[11px] text-muted-foreground">{variant.sku}</span>
                     </CardContent>

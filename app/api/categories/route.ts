@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(): Promise<Response> {
   try {
     const categories: CategorySummary[] = await prisma.category.findMany({
-      select: { id: true, name: true, slug: true },
+      select: { id: true, name: true, nameTh: true, slug: true },
       orderBy: { name: "asc" },
     });
     return Response.json({ categories });

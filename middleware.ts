@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isAdminRole, SESSION_COOKIE, verifySessionToken } from "@/lib/auth/session";
 
 /** API paths that do not require a session. The EDC webhook authenticates with its own secret. */
-const PUBLIC_API_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/edc/webhook"];
+const PUBLIC_API_PATHS = ["/api/auth/login", "/api/auth/logout", "/api/edc/webhook", "/api/health"];
 
 function isPublicApi(pathname: string): boolean {
   return PUBLIC_API_PATHS.some((path) => pathname === path);

@@ -6,6 +6,7 @@ import { create } from "zustand";
 export interface CartVariant {
   variantId: string;
   name: string;
+  nameTh: string | null;
   size: string;
   color: string;
   sku: string;

@@ -6,6 +6,13 @@ import { satangToDecimal } from "@/lib/pricing";
 import { priceBasket, type BasketInput } from "@/lib/orders/context";
 import { OrderError } from "@/lib/orders/errors";
 import { quoteSchema, type QuoteInput } from "@/lib/orders/schemas";
+import { Prisma } from "@prisma/client";
+
+/** Connection-level Prisma errors: the database cannot be reached right now. */
+function isDatabaseUnavailable(err: unknown): boolean {
+  if (err instanceof Prisma.PrismaClientInitializationError) return true;
+  return err instanceof Prisma.PrismaClientKnownRequestError && ["P1001", "P1002", "P1008", "P1017", "P2024"].includes(err.code);
+}
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +90,11 @@ export async function POST(request: NextRequest): Promise<Response> {
     if (err instanceof OrderError) {
       return apiError(err.status, err.code, err.message, err.details);
     }
+    if (isDatabaseUnavailable(err)) {
+      console.error("[POST /api/orders/quote] database unavailable", err);
+      return apiError(503, "DATABASE_UNAVAILABLE", "The database is not responding. Try again in a moment.");
+    }
     console.error("[POST /api/orders/quote]", err);
-    return apiError(500, "INTERNAL_ERROR", "Could not price the basket.");
+    return apiError(500, "INTERNAL_ERROR", "Could not price the basket. Try again.");
   }
 }

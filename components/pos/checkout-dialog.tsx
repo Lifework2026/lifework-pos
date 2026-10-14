@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, Loader2, Printer } from "lucide-react";
+import { CheckCircle2, Loader2, Printer, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
 import { formatBaht } from "@/lib/format";
 import { satangToDecimal } from "@/lib/pricing";
-import type { ApiErrorBody, MemberSummary, OrderDetails, PromotionSummary } from "@/lib/pos-types";
+import { requestJson } from "@/lib/http";
+import { useI18n } from "@/lib/i18n/client";
+import type { MessageKey } from "@/lib/i18n/messages";
+import type { MemberSummary, OrderDetails, PromotionSummary } from "@/lib/pos-types";
 import { Receipt } from "@/components/pos/receipt";
 import { CardPaymentLine, type ApprovedCard } from "@/components/pos/card-payment-line";
 import { MemberPicker } from "@/components/pos/member-picker";
@@ -17,19 +20,29 @@ import { useCartStore, type CartItem } from "@/store/useCartStore";
 type Method = "CASH" | "CARD" | "QR_PROMPTPAY" | "BANK_TRANSFER" | "OTHER";
 type BagChoice = "NONE" | "SMALL" | "LARGE";
 
-const METHOD_OPTIONS: { value: Method; label: string }[] = [
-  { value: "CASH", label: "Cash" },
-  { value: "CARD", label: "Credit / EDC" },
-  { value: "QR_PROMPTPAY", label: "PromptPay QR" },
-  { value: "BANK_TRANSFER", label: "Bank transfer" },
-  { value: "OTHER", label: "Other" },
+const METHOD_KEYS: { value: Method; key: MessageKey }[] = [
+  { value: "CASH", key: "method.cash" },
+  { value: "CARD", key: "method.card" },
+  { value: "QR_PROMPTPAY", key: "method.qr" },
+  { value: "BANK_TRANSFER", key: "method.bank" },
+  { value: "OTHER", key: "method.other" },
 ];
 
-const BAG_OPTIONS: { value: BagChoice; label: string }[] = [
-  { value: "NONE", label: "No bag" },
-  { value: "SMALL", label: "Small bag" },
-  { value: "LARGE", label: "Large bag" },
+const BAG_KEYS: { value: BagChoice; key: MessageKey }[] = [
+  { value: "NONE", key: "checkout.bagNone" },
+  { value: "SMALL", key: "checkout.bagSmall" },
+  { value: "LARGE", key: "checkout.bagLarge" },
 ];
+
+/** Server error codes that have a translated message. Other errors show the server's own text. */
+const ERROR_KEYS: Record<string, MessageKey> = {
+  PRICE_MISMATCH: "checkout.errorPriceChanged",
+  INSUFFICIENT_STOCK: "checkout.errorStock",
+  PROMOTION_NOT_AVAILABLE: "checkout.errorPromotion",
+  MEMBER_REQUIRED: "checkout.errorMemberRequired",
+  POINTS_EXCEED_BALANCE: "checkout.errorPoints",
+  BAG_OUT_OF_STOCK: "checkout.errorBag",
+};
 
 const BILL_DENOMINATIONS = [100, 500, 1000];
 
@@ -44,11 +57,24 @@ interface PaymentDraft {
 }
 
 interface QuoteResponse {
-  totals: { subtotal: string; promotionDiscount: string; memberDiscount: string; manualDiscount: string; pointsDiscount: string; discount: string; total: string };
+  totals: {
+    subtotal: string;
+    promotionDiscount: string;
+    memberDiscount: string;
+    manualDiscount: string;
+    pointsDiscount: string;
+    discount: string;
+    total: string;
+  };
   promotionName: string | null;
   pointsEarned: number;
   pointsRedeemed: number;
   member: MemberSummary | null;
+}
+
+interface PricingProblem {
+  kind: "network" | "database" | "server";
+  message: string | null;
 }
 
 /** Parses a baht string with at most 2 decimals into satang. Returns null when invalid. */
@@ -70,6 +96,7 @@ interface CheckoutDialogProps {
 }
 
 export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDialogProps) {
+  const { t } = useI18n();
   const items = useCartStore((state) => state.items);
   const manualDiscount = useCartStore((state) => state.discount);
 
@@ -79,7 +106,9 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
   const [promotions, setPromotions] = useState<PromotionSummary[]>([]);
   const [redeemInput, setRedeemInput] = useState("");
   const [quote, setQuote] = useState<QuoteResponse | null>(null);
-  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [pricingProblem, setPricingProblem] = useState<PricingProblem | null>(null);
+  const [quoteAttempt, setQuoteAttempt] = useState(0);
   const [lines, setLines] = useState<PaymentDraft[]>(() => [newLine("CASH", "")]);
   const [pendingIds, setPendingIds] = useState<Set<number>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
@@ -95,7 +124,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
     setPromotionId("");
     setRedeemInput("");
     setQuote(null);
-    setQuoteError(null);
+    setPricingProblem(null);
     setLines([newLine("CASH", "")]);
     setPendingIds(new Set());
     setSubmitting(false);
@@ -125,43 +154,55 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
   );
   const quoteJson = JSON.stringify(quoteBody);
 
-  // Re-price whenever the basket, bag, member, promotion or points change.
+  // Re-price whenever the basket, bag, member, promotion or points change, or when the cashier asks again.
   useEffect(() => {
     if (!open) return;
+    if (items.length === 0) {
+      setQuote(null);
+      setPricingProblem(null);
+      return;
+    }
     const controller = new AbortController();
     const timer = setTimeout(async () => {
+      setQuoteLoading(true);
       try {
-        const res = await fetch("/api/orders/quote", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: quoteJson,
-          signal: controller.signal,
-        });
-        const body = (await res.json().catch(() => null)) as QuoteResponse & ApiErrorBody;
-        if (!res.ok) {
+        const result = await requestJson<QuoteResponse>(
+          "/api/orders/quote",
+          { method: "POST", headers: { "Content-Type": "application/json" }, body: quoteJson },
+          { signal: controller.signal },
+        );
+        if (controller.signal.aborted) return;
+        if (result.ok) {
+          setQuote(result.data);
+          setPricingProblem(null);
+        } else {
           setQuote(null);
-          setQuoteError(body?.message ?? "Could not price this basket.");
-          return;
+          if (result.network) setPricingProblem({ kind: "network", message: null });
+          else if (result.status === 503 || result.code === "DATABASE_UNAVAILABLE") setPricingProblem({ kind: "database", message: null });
+          else setPricingProblem({ kind: "server", message: ERROR_KEYS[result.code ?? ""] ? null : result.message });
         }
-        setQuote(body);
-        setQuoteError(null);
-      } catch (err) {
-        if (!(err instanceof DOMException && err.name === "AbortError")) {
-          setQuoteError("Network error while pricing. Check the connection.");
+      } catch {
+        if (!controller.signal.aborted) {
+          setQuote(null);
+          setPricingProblem({ kind: "network", message: null });
         }
+      } finally {
+        if (!controller.signal.aborted) setQuoteLoading(false);
       }
     }, 200);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [open, quoteJson]);
+  }, [open, quoteJson, quoteAttempt, items.length]);
 
   const dueSatang = quote ? (parseSatang(quote.totals.total) ?? 0) : 0;
   const appliedSatang = lines.reduce((sum, line) => sum + (parseSatang(line.amount) ?? 0), 0);
   const remainingSatang = dueSatang - appliedSatang;
   const cardPending = pendingIds.size > 0;
-  const redeemValid = !redeemInput || (Number.isInteger(Number(redeemInput)) && Number(redeemInput) >= 0 && Number(redeemInput) <= (member?.points ?? 0));
+  const redeemValid =
+    !redeemInput ||
+    (Number.isInteger(Number(redeemInput)) && Number(redeemInput) >= 0 && Number(redeemInput) <= (member?.points ?? 0));
 
   // Keep the first line equal to the amount due until the cashier edits it.
   useEffect(() => {
@@ -187,7 +228,8 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
 
   const canSubmit =
     !!quote &&
-    !quoteError &&
+    !quoteLoading &&
+    !pricingProblem &&
     dueSatang > 0 &&
     remainingSatang === 0 &&
     lines.length > 0 &&
@@ -218,28 +260,24 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
     };
 
     try {
-      const res = await fetch("/api/orders/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = (await res.json().catch(() => null)) as { order?: OrderDetails } & ApiErrorBody;
-      if (!res.ok || !body.order) {
-        const message = body?.message ?? "Checkout failed. Please try again.";
+      const result = await requestJson<{ order: OrderDetails }>(
+        "/api/orders/checkout",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) },
+        { retries: 0 },
+      );
+      if (!result.ok) {
+        const key = ERROR_KEYS[result.code ?? ""];
+        const message = key ? t(key) : result.network ? t("checkout.networkCheckout") : (result.message ?? t("checkout.failed"));
         setError(message);
-        toast.add({ title: "Checkout failed", description: message, type: "error" });
+        toast.add({ title: t("checkout.failed"), description: message, type: "error" });
         return;
       }
-      setOrder(body.order);
-      toast.add({ title: "Sale complete", description: `Receipt ${body.order.receiptNo}`, type: "success" });
-    } catch {
-      const message = "Network error. Check the connection; no sale was recorded.";
-      setError(message);
-      toast.add({ title: "Checkout failed", description: message, type: "error" });
+      setOrder(result.data.order);
+      toast.add({ title: t("checkout.saleComplete"), description: result.data.order.receiptNo, type: "success" });
     } finally {
       setSubmitting(false);
     }
-  }, [submitting, items, bag, member, promotionId, redeemInput, manualDiscount, lines]);
+  }, [submitting, items, bag, member, promotionId, redeemInput, manualDiscount, lines, t]);
 
   // A card approval completes the sale automatically when that approval balances the bill.
   useEffect(() => {
@@ -290,6 +328,14 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
     onOpenChange(next);
   }
 
+  const problemText = pricingProblem
+    ? pricingProblem.kind === "network"
+      ? t("checkout.pricingNetwork")
+      : pricingProblem.kind === "database"
+        ? t("checkout.pricingDatabase")
+        : (pricingProblem.message ?? t("checkout.pricingFailed"))
+    : null;
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
@@ -298,10 +344,10 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <CheckCircle2 className="size-5 text-emerald-600" />
-                Sale complete
+                {t("checkout.saleComplete")}
               </DialogTitle>
               <DialogDescription>
-                Receipt {order.receiptNo} · Total {formatBaht(Number(order.totalAmount))}
+                {t("checkout.receiptTotal", { receipt: order.receiptNo, total: formatBaht(Number(order.totalAmount)) })}
               </DialogDescription>
             </DialogHeader>
             <div className="receipt-preview max-h-[50vh] overflow-y-auto rounded-md bg-muted/50 p-3">
@@ -309,22 +355,22 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
             </div>
             <DialogFooter className="gap-2 sm:justify-between">
               <Button variant="outline" onClick={() => window.print()}>
-                <Printer className="size-4" /> Print receipt
+                <Printer className="size-4" /> {t("checkout.printReceipt")}
               </Button>
-              <Button onClick={finish}>New sale</Button>
+              <Button onClick={finish}>{t("checkout.newSale")}</Button>
             </DialogFooter>
           </>
         ) : (
           <>
             <DialogHeader>
-              <DialogTitle>Checkout</DialogTitle>
-              <DialogDescription>Amount due {formatBaht(dueSatang / 100)}</DialogDescription>
+              <DialogTitle>{t("checkout.title")}</DialogTitle>
+              <DialogDescription>{t("checkout.amountDue", { amount: formatBaht(dueSatang / 100) })}</DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-6 md:grid-cols-2">
-              <section className="flex flex-col gap-4">
+              <section className="flex min-w-0 flex-col gap-4">
                 <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">Member</span>
+                  <span className="text-sm font-medium">{t("checkout.member")}</span>
                   <MemberPicker
                     selected={member}
                     onSelect={(next) => {
@@ -336,17 +382,18 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">Shopping bag</span>
+                  <span className="text-sm font-medium">{t("checkout.bag")}</span>
                   <div className="grid grid-cols-3 gap-2">
-                    {BAG_OPTIONS.map((option) => (
+                    {BAG_KEYS.map((option) => (
                       <Button
                         key={option.value}
                         variant={bag === option.value ? "default" : "outline"}
                         size="sm"
+                        className="h-auto min-h-9 min-w-0 whitespace-normal px-2 py-2 text-center leading-tight"
                         onClick={() => setBag(option.value)}
                         disabled={submitting}
                       >
-                        {option.label}
+                        {t(option.key)}
                       </Button>
                     ))}
                   </div>
@@ -354,7 +401,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
 
                 <div className="flex flex-col gap-2">
                   <label htmlFor="promotion" className="text-sm font-medium">
-                    Promotion
+                    {t("checkout.promotion")}
                   </label>
                   <select
                     id="promotion"
@@ -363,7 +410,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                     className="h-9 rounded-md border bg-background px-3 text-sm"
                     disabled={submitting}
                   >
-                    <option value="">No promotion</option>
+                    <option value="">{t("checkout.noPromotion")}</option>
                     {promotions.map((promo) => (
                       <option key={promo.id} value={promo.id}>
                         {promo.name}
@@ -376,7 +423,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                 {member ? (
                   <div className="flex flex-col gap-2">
                     <label htmlFor="redeem" className="text-sm font-medium">
-                      Redeem points (1 point = ฿1)
+                      {t("checkout.redeem")}
                     </label>
                     <Input
                       id="redeem"
@@ -386,63 +433,77 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                       step={1}
                       value={redeemInput}
                       onChange={(event) => setRedeemInput(event.target.value)}
-                      placeholder={`Up to ${member.points}`}
+                      placeholder={t("checkout.redeemUpTo", { count: member.points })}
                       disabled={submitting}
                     />
                     {!redeemValid ? (
-                      <p className="text-sm text-destructive">The member has {member.points} points.</p>
+                      <p className="text-sm text-destructive">{t("checkout.pointsLimit", { count: member.points })}</p>
                     ) : null}
                   </div>
                 ) : null}
               </section>
 
-              <section className="flex flex-col gap-4">
-                <div className="rounded-md border p-3 text-sm">
-                  {quoteError ? (
-                    <p role="alert" className="text-destructive">
-                      {quoteError}
-                    </p>
+              <section className="flex min-w-0 flex-col gap-4">
+                <div className="rounded-md border p-3 text-sm" aria-live="polite">
+                  {items.length === 0 ? (
+                    <p className="text-muted-foreground">{t("checkout.emptyBasket")}</p>
+                  ) : problemText ? (
+                    <div className="flex flex-col gap-2">
+                      <p role="alert" className="text-destructive">
+                        {problemText}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="self-start"
+                        onClick={() => setQuoteAttempt((n) => n + 1)}
+                        disabled={quoteLoading}
+                      >
+                        <RefreshCw className="size-4" /> {t("checkout.recalculate")}
+                      </Button>
+                    </div>
                   ) : !quote ? (
                     <p className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" /> Pricing...
+                      <Loader2 className="size-4 animate-spin" /> {t("checkout.pricing")}
                     </p>
                   ) : (
                     <dl className="flex flex-col gap-1.5">
-                      <QuoteRow label="Subtotal" value={quote.totals.subtotal} />
+                      <QuoteRow label={t("checkout.subtotal")} value={quote.totals.subtotal} />
                       {Number(quote.totals.promotionDiscount) > 0 ? (
-                        <QuoteRow label={quote.promotionName ?? "Promotion"} value={`-${quote.totals.promotionDiscount}`} />
+                        <QuoteRow
+                          label={quote.promotionName ?? t("receipt.promotionFallback")}
+                          value={`-${quote.totals.promotionDiscount}`}
+                        />
                       ) : null}
                       {Number(quote.totals.memberDiscount) > 0 ? (
-                        <QuoteRow label="Member discount" value={`-${quote.totals.memberDiscount}`} />
+                        <QuoteRow label={t("checkout.memberDiscount")} value={`-${quote.totals.memberDiscount}`} />
                       ) : null}
                       {Number(quote.totals.manualDiscount) > 0 ? (
-                        <QuoteRow label="Discount" value={`-${quote.totals.manualDiscount}`} />
+                        <QuoteRow label={t("checkout.discount")} value={`-${quote.totals.manualDiscount}`} />
                       ) : null}
                       {Number(quote.totals.pointsDiscount) > 0 ? (
-                        <QuoteRow label="Points redeemed" value={`-${quote.totals.pointsDiscount}`} />
+                        <QuoteRow label={t("checkout.pointsRedeemed")} value={`-${quote.totals.pointsDiscount}`} />
                       ) : null}
                       <div className="mt-1 flex justify-between border-t pt-2 text-base font-semibold">
-                        <dt>Total due</dt>
+                        <dt>{t("checkout.totalDue")}</dt>
                         <dd className="tabular-nums">{formatBaht(Number(quote.totals.total))}</dd>
                       </div>
                       {member && quote.pointsEarned > 0 ? (
-                        <p className="text-xs text-muted-foreground">Member earns {quote.pointsEarned} points on this sale.</p>
+                        <p className="text-xs text-muted-foreground">{t("checkout.memberEarns", { count: quote.pointsEarned })}</p>
                       ) : null}
                     </dl>
                   )}
                 </div>
 
                 <div className="flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Payment</span>
-                    <span
-                      className={`text-sm tabular-nums ${remainingSatang === 0 ? "text-emerald-700" : "text-amber-700"}`}
-                    >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{t("checkout.payment")}</span>
+                    <span className={`text-sm tabular-nums ${remainingSatang === 0 ? "text-emerald-700" : "text-amber-700"}`}>
                       {remainingSatang === 0
-                        ? "Fully paid"
+                        ? t("checkout.fullyPaid")
                         : remainingSatang > 0
-                          ? `Remaining ${formatBaht(remainingSatang / 100)}`
-                          : `Over by ${formatBaht(-remainingSatang / 100)}`}
+                          ? t("checkout.remaining", { amount: formatBaht(remainingSatang / 100) })
+                          : t("checkout.overBy", { amount: formatBaht(-remainingSatang / 100) })}
                     </span>
                   </div>
 
@@ -462,8 +523,13 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                     />
                   ))}
 
-                  <Button variant="outline" size="sm" onClick={addLine} disabled={submitting || remainingSatang <= 0}>
-                    Add payment (split)
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={addLine}
+                    disabled={submitting || remainingSatang <= 0 || !quote}
+                  >
+                    {t("checkout.addPayment")}
                   </Button>
                 </div>
 
@@ -476,16 +542,12 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
             </div>
 
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => handleOpenChange(false)}
-                disabled={submitting || cardPending}
-              >
-                Cancel
+              <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting || cardPending}>
+                {t("common.cancel")}
               </Button>
               <Button size="lg" onClick={() => void submit()} disabled={!canSubmit}>
                 {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                Confirm payment
+                {t("checkout.confirm")}
               </Button>
             </DialogFooter>
           </>
@@ -497,7 +559,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
 
 function QuoteRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between gap-3">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="tabular-nums">{formatBaht(Number(value))}</dd>
     </div>
@@ -518,39 +580,54 @@ interface PaymentLineProps {
   onPendingChange: (pending: boolean) => void;
 }
 
-function PaymentLine({ index, line, dueSatang, disabled, pending, canRemove, onChange, onRemove, onApproved, onPendingChange }: PaymentLineProps) {
+function PaymentLine({
+  index,
+  line,
+  dueSatang,
+  disabled,
+  pending,
+  canRemove,
+  onChange,
+  onRemove,
+  onApproved,
+  onPendingChange,
+}: PaymentLineProps) {
+  const { t } = useI18n();
   const locked = disabled || pending;
   const amountSatang = parseSatang(line.amount) ?? 0;
   const tenderedSatang = parseSatang(line.tendered);
-  const change = line.method === "CASH" && tenderedSatang !== null && tenderedSatang >= amountSatang ? tenderedSatang - amountSatang : null;
+  const change =
+    line.method === "CASH" && tenderedSatang !== null && tenderedSatang >= amountSatang ? tenderedSatang - amountSatang : null;
 
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground">Payment {index + 1}</span>
+        <span className="text-xs font-medium text-muted-foreground">{t("checkout.paymentN", { n: index + 1 })}</span>
         {canRemove ? (
           <button type="button" className="text-xs text-muted-foreground underline" onClick={onRemove}>
-            Remove
+            {t("checkout.remove")}
           </button>
         ) : null}
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
-        {METHOD_OPTIONS.map((option) => (
+      {/* Each channel gets its own cell, so long labels wrap inside the button instead of overlapping. */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {METHOD_KEYS.map((option) => (
           <Button
             key={option.value}
             size="sm"
             variant={line.method === option.value ? "default" : "outline"}
             disabled={locked}
+            className="h-auto min-h-9 w-full min-w-0 whitespace-normal px-2 py-2 text-center leading-tight"
             onClick={() => onChange({ method: option.value, card: null, reference: "", tendered: "" })}
           >
-            {option.label}
+            {t(option.key)}
           </Button>
         ))}
       </div>
 
       <label className="flex items-center justify-between gap-3 text-sm">
-        <span className="text-muted-foreground">Amount (฿)</span>
+        <span className="text-muted-foreground">{t("checkout.amount")}</span>
         <Input
           type="number"
           inputMode="decimal"
@@ -566,7 +643,7 @@ function PaymentLine({ index, line, dueSatang, disabled, pending, canRemove, onC
       {line.method === "CASH" ? (
         <>
           <label className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">Cash received (฿)</span>
+            <span className="text-muted-foreground">{t("checkout.cashReceived")}</span>
             <Input
               type="number"
               inputMode="decimal"
@@ -575,7 +652,7 @@ function PaymentLine({ index, line, dueSatang, disabled, pending, canRemove, onC
               value={line.tendered}
               onChange={(event) => onChange({ tendered: event.target.value })}
               className="h-9 w-40 text-right tabular-nums"
-              disabled={disabled}
+              disabled={locked}
             />
           </label>
           <div className="flex flex-wrap gap-1.5">
@@ -587,15 +664,15 @@ function PaymentLine({ index, line, dueSatang, disabled, pending, canRemove, onC
                   key={value}
                   size="sm"
                   variant="secondary"
-                  disabled={disabled}
+                  disabled={locked}
                   onClick={() => onChange({ tendered: satangToDecimal(value) })}
                 >
-                  {value === dueSatang ? "Exact" : formatBaht(value / 100)}
+                  {value === dueSatang ? t("checkout.exact") : formatBaht(value / 100)}
                 </Button>
               ))}
           </div>
           <p className="text-sm">
-            Change{" "}
+            {t("checkout.change")}{" "}
             <span className="font-semibold tabular-nums">{change !== null ? formatBaht(change / 100) : "—"}</span>
           </p>
         </>
@@ -603,13 +680,13 @@ function PaymentLine({ index, line, dueSatang, disabled, pending, canRemove, onC
 
       {line.method === "QR_PROMPTPAY" || line.method === "BANK_TRANSFER" ? (
         <label className="flex items-center justify-between gap-3 text-sm">
-          <span className="text-muted-foreground">Reference / slip no.</span>
+          <span className="text-muted-foreground">{t("checkout.reference")}</span>
           <Input
             value={line.reference}
             onChange={(event) => onChange({ reference: event.target.value })}
             className="h-9 w-40 font-mono"
             maxLength={100}
-            disabled={disabled}
+            disabled={locked}
           />
         </label>
       ) : null}

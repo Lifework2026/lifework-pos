@@ -143,6 +143,8 @@ model Promotion {
 model Category {
   id        String   @id @default(cuid())
   name      String
+  /// Thai display name. Falls back to `name` when empty.
+  nameTh    String?
   slug      String   @unique
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -154,6 +156,8 @@ model Category {
 model Product {
   id          String   @id @default(cuid())
   name        String
+  /// Thai display name. Falls back to `name` when empty.
+  nameTh      String?
   slug        String   @unique
   description String?
   brand       String?
@@ -248,6 +252,8 @@ model OrderItem {
   orderId          String
   variantId        String
   productName      String
+  /// Thai name snapshot, so Thai receipts stay correct after catalogue edits.
+  productNameTh    String?
   sku              String
   barcode          String
   size             String
