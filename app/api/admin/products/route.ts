@@ -3,8 +3,11 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { getCurrentSession } from "@/lib/auth/server";
+import { readBody, requireUser } from "@/lib/api-helpers";
 import { randomStoreEan13 } from "@/lib/barcode";
+import { defaultSku, ImageBindingError, validateImageBinding } from "@/lib/catalog/sku";
+import { ensureSizes } from "@/lib/catalog/sizes";
+import { slugify } from "@/lib/slug";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +23,12 @@ const variantSchema = z.object({
 const productSchema = z
   .object({
     name: z.string().trim().min(1).max(150),
+    nameTh: z.string().trim().max(150).optional().nullable(),
     brand: z.string().trim().max(80).optional().nullable(),
     description: z.string().trim().max(2000).optional().nullable(),
     categoryId: z.string().min(1),
+    imageUrl: z.string().max(500).optional().nullable(),
+    imagePath: z.string().max(200).optional().nullable(),
     variants: z.array(variantSchema).min(1).max(50),
   })
   .superRefine((value, ctx) => {
@@ -40,21 +46,6 @@ const productSchema = z
     });
   });
 
-function slugify(value: string): string {
-  const slug = value
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "product";
-}
-
-/** Readable default SKU, e.g. "CLASSI-BLU-M". Staff can type their own instead. */
-function defaultSku(name: string, color: string, size: string): string {
-  const clean = (text: string, max: number) => text.replace(/[^A-Za-z0-9]/g, "").slice(0, max).toUpperCase();
-  return `${clean(name, 6) || "PRD"}-${clean(color, 3) || "CLR"}-${clean(size, 6) || "SZ"}`;
-}
-
 class ProductError extends Error {
   constructor(
     public readonly status: number,
@@ -69,43 +60,34 @@ class ProductError extends Error {
 
 /** POST /api/admin/products: creates a product, its variants and any opening stock in one transaction. */
 export async function POST(request: NextRequest): Promise<Response> {
-  const session = await getCurrentSession();
-  if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
-
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
-    return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
-  }
-
-  const parsed = productSchema.safeParse(payload);
-  if (!parsed.success) {
-    return apiError(
-      400,
-      "VALIDATION_ERROR",
-      parsed.error.issues[0]?.message ?? "Product details are invalid.",
-      parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
-    );
-  }
-
-  const input = parsed.data;
+  const auth = await requireUser();
+  if ("response" in auth) return auth.response;
+  const body = await readBody(request, productSchema);
+  if ("response" in body) return body.response;
+  const input = body.data;
 
   try {
     const category = await prisma.category.findUnique({ where: { id: input.categoryId }, select: { id: true } });
     if (!category) throw new ProductError(400, "CATEGORY_NOT_FOUND", "Choose a valid category.");
 
+    let image: { imageUrl: string; imagePath: string } | null = null;
+    if (input.imageUrl || input.imagePath) {
+      if (!input.imageUrl || !input.imagePath) throw new ProductError(400, "IMAGE_INVALID", "The photo reference is incomplete.");
+      try {
+        image = validateImageBinding(input.imageUrl, input.imagePath);
+      } catch (err) {
+        if (err instanceof ImageBindingError) throw new ProductError(400, "IMAGE_INVALID", err.message);
+        throw err;
+      }
+    }
+
     // Unique slug: "classic-shirt", then "classic-shirt-2", and so on.
     const baseSlug = slugify(input.name);
-    const similar = await prisma.product.findMany({
-      where: { slug: { startsWith: baseSlug } },
-      select: { slug: true },
-    });
+    const similar = await prisma.product.findMany({ where: { slug: { startsWith: baseSlug } }, select: { slug: true } });
     const taken = new Set(similar.map((row) => row.slug));
     let slug = baseSlug;
     for (let n = 2; taken.has(slug); n += 1) slug = `${baseSlug}-${n}`;
 
-    // Resolve SKUs and barcodes, then check them against the payload and the database.
     const resolved = input.variants.map((variant) => ({
       size: variant.size,
       color: variant.color,
@@ -117,12 +99,8 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const skus = resolved.map((variant) => variant.sku);
     const barcodes = resolved.map((variant) => variant.barcode);
-    if (new Set(skus).size !== skus.length) {
-      throw new ProductError(400, "DUPLICATE_SKU", "Two variants use the same SKU.");
-    }
-    if (new Set(barcodes).size !== barcodes.length) {
-      throw new ProductError(400, "DUPLICATE_BARCODE", "Two variants use the same barcode.");
-    }
+    if (new Set(skus).size !== skus.length) throw new ProductError(400, "DUPLICATE_SKU", "Two variants use the same SKU.");
+    if (new Set(barcodes).size !== barcodes.length) throw new ProductError(400, "DUPLICATE_BARCODE", "Two variants use the same barcode.");
 
     const conflicts = await prisma.productVariant.findMany({
       where: { OR: [{ sku: { in: skus } }, { barcode: { in: barcodes } }] },
@@ -137,13 +115,17 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     const product = await prisma.$transaction(
       async (tx) => {
+        await ensureSizes(tx, resolved.map((variant) => variant.size));
         const created = await tx.product.create({
           data: {
             name: input.name,
+            nameTh: input.nameTh || null,
             slug,
             brand: input.brand || null,
             description: input.description || null,
             categoryId: input.categoryId,
+            imageUrl: image?.imageUrl ?? null,
+            imagePath: image?.imagePath ?? null,
             variants: {
               create: resolved.map((variant) => ({
                 size: variant.size,
@@ -174,11 +156,10 @@ export async function POST(request: NextRequest): Promise<Response> {
               stockAfter: variant.stockQuantity,
               reference: created.slug,
               note: "Opening stock",
-              userId: session.id,
+              userId: auth.user.id,
             })),
           });
         }
-
         return created;
       },
       { maxWait: 5_000, timeout: 15_000 },
@@ -186,9 +167,7 @@ export async function POST(request: NextRequest): Promise<Response> {
 
     return Response.json({ product }, { status: 201 });
   } catch (err) {
-    if (err instanceof ProductError) {
-      return apiError(err.status, err.code, err.message, err.details);
-    }
+    if (err instanceof ProductError) return apiError(err.status, err.code, err.message, err.details);
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       return apiError(409, "SKU_OR_BARCODE_EXISTS", "That SKU or barcode is already in use. Please try again.");
     }

@@ -233,11 +233,37 @@ async function seedDemoCatalog(): Promise<number> {
   return created;
 }
 
+/** Sizes offered in the product form. Created once; sizes already used by variants are added too, and nothing is renamed or removed. */
+const DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "Free Size"];
+
+async function seedSizes(): Promise<void> {
+  const used = await prisma.productVariant.findMany({ distinct: ["size"], select: { size: true } });
+  const existing = await prisma.size.findMany({ select: { name: true, sortOrder: true } });
+  const known = new Set(existing.map((row) => row.name.toLowerCase()));
+  let order = existing.reduce((max, row) => Math.max(max, row.sortOrder), 0);
+
+  const wanted = [...DEFAULT_SIZES, ...used.map((row) => row.size)];
+  const seen = new Set<string>();
+  const data: { name: string; sortOrder: number }[] = [];
+  for (const name of wanted) {
+    const key = name.trim().toLowerCase();
+    if (!key || known.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    order += 1;
+    data.push({ name: name.trim(), sortOrder: order });
+  }
+  if (data.length > 0) {
+    await prisma.size.createMany({ data, skipDuplicates: true });
+    console.log(`Added ${data.length} size(s) to the size list.`);
+  }
+}
+
 async function main(): Promise<void> {
   await seedAccounts();
   await seedBags();
   const demoCreated = await seedDemoCatalog();
   await fillThaiNames();
+  await seedSizes();
 
   const [users, products, variants] = await Promise.all([
     prisma.user.count(),

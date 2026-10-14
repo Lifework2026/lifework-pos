@@ -7,6 +7,7 @@ export interface CartVariant {
   variantId: string;
   name: string;
   nameTh: string | null;
+  imageUrl: string | null;
   size: string;
   color: string;
   sku: string;
@@ -31,6 +32,8 @@ interface CartState {
   updateQuantity: (variantId: string, quantity: number) => void;
   removeItem: (variantId: string) => void;
   clearCart: () => void;
+  /** Replaces the whole cart, used when a held bill is resumed. */
+  replaceCart: (items: CartItem[], discount: number) => void;
   setDiscount: (discount: number) => void;
 
   getSubtotal: () => number;
@@ -89,6 +92,10 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
   clearCart: () => {
     set({ items: [], discount: 0 });
+  },
+
+  replaceCart: (items, discount) => {
+    set({ items, discount: Number.isFinite(discount) && discount > 0 ? toMoney(discount) : 0 });
   },
 
   setDiscount: (discount) => {

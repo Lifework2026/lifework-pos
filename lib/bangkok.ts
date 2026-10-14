@@ -38,3 +38,10 @@ export function formatBangkokDateTime(date: Date): string {
     minute: "2-digit",
   });
 }
+
+/** Hour of day (0-23) in store time. */
+export function bangkokHour(date: Date): number {
+  return Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: STORE_TIMEZONE, hour: "2-digit", hourCycle: "h23" }).format(date),
+  );
+}

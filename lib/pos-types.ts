@@ -13,6 +13,7 @@ export interface VariantSummary {
     id: string;
     name: string;
     nameTh: string | null;
+    imageUrl: string | null;
     brand: string | null;
     categoryId: string;
   };

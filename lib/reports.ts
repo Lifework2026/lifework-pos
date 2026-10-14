@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { bangkokDayRange } from "@/lib/bangkok";
+import { bangkokDayRange, bangkokHour, bangkokYmd } from "@/lib/bangkok";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payment-labels";
 import { satangToDecimal } from "@/lib/pricing";
 
@@ -197,6 +197,8 @@ export interface ChannelSummary {
 
 export interface PeriodSummary {
   range: DateRange;
+  payments: PaymentRow[];
+  refunds: RefundRow[];
   channels: ChannelSummary[];
   totals: { sales: number; refunds: number; net: number; saleCount: number; voidCount: number; voidAmount: number };
 }
@@ -244,6 +246,8 @@ export async function buildSummary(range: DateRange): Promise<PeriodSummary> {
 
   return {
     range,
+    payments,
+    refunds,
     channels,
     totals: {
       sales,
@@ -256,16 +260,7 @@ export async function buildSummary(range: DateRange): Promise<PeriodSummary> {
   };
 }
 
-/** One CSV-safe line per row. Values are quoted when needed. */
-export function toCsv(header: string[], rows: (string | number | null)[][]): string {
-  const escape = (value: string | number | null): string => {
-    if (value === null) return "";
-    const text = String(value);
-    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-  };
-  const lines = [header, ...rows].map((row) => row.map(escape).join(","));
-  return `﻿${lines.join("\r\n")}\r\n`;
-}
+export { toCsv } from "@/lib/tabular";
 
 export function thb(satang: number): string {
   return satangToDecimal(satang);
@@ -276,3 +271,52 @@ export function bangkokTime(date: Date): string {
   return date.toLocaleTimeString("en-GB", { timeZone: "Asia/Bangkok", hour12: false });
 }
 
+export interface SeriesPoint {
+  key: string;
+  label: string;
+  sales: number;
+  refunds: number;
+  net: number;
+}
+
+/** Every calendar day from `from` to `to` inclusive, as YYYY-MM-DD. */
+function eachDay(from: string, to: string): string[] {
+  const days: string[] = [];
+  const cursor = new Date(`${from}T12:00:00Z`);
+  const end = new Date(`${to}T12:00:00Z`);
+  while (cursor <= end) {
+    days.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}
+
+/**
+ * Sales over time for a chart: 24 hourly bars for a day, one bar per day for a month.
+ * Built from the same rows as the totals, so the chart always agrees with the table.
+ */
+export function buildSeries(period: ReportPeriod, range: DateRange, payments: PaymentRow[], refunds: RefundRow[]): SeriesPoint[] {
+  const buckets: SeriesPoint[] =
+    period === "day"
+      ? Array.from({ length: 24 }, (_unused, hour) => ({
+          key: String(hour),
+          label: String(hour).padStart(2, "0"),
+          sales: 0,
+          refunds: 0,
+          net: 0,
+        }))
+      : eachDay(range.from, range.to).map((day) => ({ key: day, label: String(Number(day.slice(8))), sales: 0, refunds: 0, net: 0 }));
+  const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+  const keyOf = (date: Date) => (period === "day" ? String(bangkokHour(date)) : bangkokYmd(date));
+
+  for (const payment of payments) {
+    const bucket = byKey.get(keyOf(payment.paidAt));
+    if (bucket) bucket.sales += payment.amount;
+  }
+  for (const refund of refunds) {
+    const bucket = byKey.get(keyOf(refund.refundedAt));
+    if (bucket) bucket.refunds += refund.amount;
+  }
+  for (const bucket of buckets) bucket.net = bucket.sales - bucket.refunds;
+  return buckets;
+}

@@ -1,38 +1,160 @@
 import type { NextRequest } from "next/server";
 import { apiError } from "@/lib/api";
-import { getCurrentSession } from "@/lib/auth/server";
+import { requireUser } from "@/lib/api-helpers";
 import { bangkokYmd, isYmd } from "@/lib/bangkok";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payment-labels";
-import {
-  bangkokTime,
-  buildSummary,
-  customRange,
-  loadPayments,
-  loadRefunds,
-  loadVoids,
-  thb,
-  toCsv,
-} from "@/lib/reports";
+import { prisma } from "@/lib/prisma";
+import { buildSummary, customRange, loadPayments, loadRefunds, loadVoids, bangkokTime, thb } from "@/lib/reports";
+import { buildXlsx, toCsv } from "@/lib/tabular";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
-const KINDS = ["payments", "refunds", "voids", "summary"] as const;
+const KINDS = ["payments", "refunds", "voids", "summary", "inventory", "movements", "members"] as const;
+type Kind = (typeof KINDS)[number];
+
+/** Kinds that depend on a date range. Inventory and members are snapshots of right now. */
+const RANGED: Kind[] = ["payments", "refunds", "voids", "summary", "movements"];
+const MOVEMENT_ROW_LIMIT = 50_000;
+
+interface Dataset {
+  header: string[];
+  rows: (string | number | null)[][];
+  /** Zero-based columns Excel should keep as text (barcodes, SKUs, phone numbers). */
+  textColumns: number[];
+}
+
+async function buildDataset(kind: Kind, from: string, to: string): Promise<Dataset> {
+  const range = customRange(from, to);
+
+  if (kind === "payments") {
+    const rows = await loadPayments(range);
+    return {
+      header: [
+        "Date", "Time", "Receipt No", "Order status", "Payment channel", "Amount (THB)", "Tendered (THB)",
+        "Change (THB)", "Reference", "Card transaction ref", "Approval code", "Card", "Cashier", "Member phone",
+      ],
+      rows: rows.map((r) => [
+        bangkokYmd(r.paidAt), bangkokTime(r.paidAt), r.receiptNo, r.orderStatus,
+        PAYMENT_METHOD_LABELS[r.method] ?? r.method, thb(r.amount),
+        r.tendered === null ? null : thb(r.tendered), r.changeGiven === null ? null : thb(r.changeGiven),
+        r.reference, r.transactionRef, r.approvalCode, r.cardMask, r.cashier, r.memberPhone,
+      ]),
+      textColumns: [2, 8, 9, 10, 13],
+    };
+  }
+
+  if (kind === "refunds") {
+    const rows = await loadRefunds(range);
+    return {
+      header: ["Date", "Time", "Receipt No", "Refund ID", "Refund channel", "Amount (THB)", "Reference", "Reason", "Items", "Staff"],
+      rows: rows.map((r) => [
+        bangkokYmd(r.refundedAt), bangkokTime(r.refundedAt), r.receiptNo, r.refundId,
+        PAYMENT_METHOD_LABELS[r.method] ?? r.method, thb(r.amount), r.reference, r.reason, r.items, r.staff,
+      ]),
+      textColumns: [2, 3, 6],
+    };
+  }
+
+  if (kind === "voids") {
+    const rows = await loadVoids(range);
+    return {
+      header: ["Date", "Time", "Receipt No", "Voided amount (THB)", "Original payment channels", "Reason", "Staff"],
+      rows: rows.map((r) => [bangkokYmd(r.voidedAt), bangkokTime(r.voidedAt), r.receiptNo, thb(r.amount), r.channels, r.reason, r.staff]),
+      textColumns: [2],
+    };
+  }
+
+  if (kind === "summary") {
+    const summary = await buildSummary(range);
+    return {
+      header: ["Payment channel", "Sales count", "Sales (THB)", "Refunds (THB)", "Net (THB)"],
+      rows: [
+        ...summary.channels.map((c) => [c.label, c.salesCount, thb(c.sales), thb(c.refunds), thb(c.net)]),
+        ["TOTAL", summary.totals.saleCount, thb(summary.totals.sales), thb(summary.totals.refunds), thb(summary.totals.net)],
+      ],
+      textColumns: [],
+    };
+  }
+
+  if (kind === "inventory") {
+    const variants = await prisma.productVariant.findMany({
+      orderBy: [{ product: { name: "asc" } }, { color: "asc" }, { size: "asc" }],
+      select: {
+        sku: true, barcode: true, size: true, color: true, price: true, stockQuantity: true, isActive: true,
+        product: { select: { name: true, nameTh: true, brand: true, isActive: true, category: { select: { name: true } } } },
+      },
+    });
+    return {
+      header: ["SKU", "Product", "Product (Thai)", "Category", "Brand", "Size", "Color", "Barcode", "Price (THB)", "Stock", "Stock value (THB)", "Active"],
+      rows: variants.map((v) => [
+        v.sku, v.product.name, v.product.nameTh, v.product.category.name, v.product.brand, v.size, v.color, v.barcode,
+        v.price.toFixed(2), v.stockQuantity, (Number(v.price) * v.stockQuantity).toFixed(2),
+        v.isActive && v.product.isActive ? "Yes" : "No",
+      ]),
+      textColumns: [0, 7],
+    };
+  }
+
+  if (kind === "movements") {
+    const rows = await prisma.inventoryMovement.findMany({
+      where: { createdAt: { gte: range.start, lt: range.end } },
+      orderBy: { createdAt: "asc" },
+      take: MOVEMENT_ROW_LIMIT,
+      select: {
+        createdAt: true, type: true, quantityChange: true, stockBefore: true, stockAfter: true, reference: true, note: true,
+        variant: { select: { sku: true, size: true, color: true, product: { select: { name: true } } } },
+        user: { select: { fullName: true } },
+      },
+    });
+    return {
+      header: ["Date", "Time", "SKU", "Product", "Size", "Color", "Type", "Change", "Stock before", "Stock after", "Reference", "Note", "Staff"],
+      rows: rows.map((m) => [
+        bangkokYmd(m.createdAt), bangkokTime(m.createdAt), m.variant.sku, m.variant.product.name, m.variant.size, m.variant.color,
+        m.type, m.quantityChange, m.stockBefore, m.stockAfter, m.reference, m.note, m.user?.fullName ?? null,
+      ]),
+      textColumns: [2, 10],
+    };
+  }
+
+  // members
+  const members = await prisma.member.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, phone: true, points: true, isActive: true, createdAt: true, _count: { select: { orders: true } } },
+  });
+  const spend = await prisma.order.groupBy({
+    by: ["memberId"],
+    where: { memberId: { not: null }, status: { not: "VOIDED" } },
+    _sum: { totalAmount: true, refundedAmount: true },
+  });
+  const spendById = new Map(spend.map((row) => [row.memberId, Number(row._sum.totalAmount ?? 0) - Number(row._sum.refundedAmount ?? 0)]));
+  return {
+    header: ["Name", "Phone", "Points", "Orders", "Total spent (THB)", "Active", "Joined"],
+    rows: members.map((m) => [
+      m.name, m.phone, m.points, m._count.orders, (spendById.get(m.id) ?? 0).toFixed(2),
+      m.isActive ? "Yes" : "No", bangkokYmd(m.createdAt),
+    ]),
+    textColumns: [1],
+  };
+}
 
 /**
- * GET /api/admin/export?kind=payments|refunds|voids|summary&from=YYYY-MM-DD&to=YYYY-MM-DD
+ * GET /api/admin/export?kind=...&format=csv|xlsx&from=YYYY-MM-DD&to=YYYY-MM-DD
  *
- * Downloads a CSV for bank-statement matching and month-end reconciliation. Times are Bangkok time.
- * Voided sales are excluded from payments and summary, and appear in the voids file.
+ * kind: payments, refunds, voids, summary, movements (date range), inventory, members (snapshot).
+ * Times are Bangkok time. Voided sales are excluded from payments and summary, and appear in voids.
+ * CSV files carry a byte-order mark so Excel reads Thai text correctly.
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const session = await getCurrentSession();
-  if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
-  if (session.role === "CASHIER") return apiError(403, "FORBIDDEN", "Manager access required.");
+  const auth = await requireUser();
+  if ("response" in auth) return auth.response;
+  if (auth.user.role === "CASHIER") return apiError(403, "FORBIDDEN", "Manager access required.");
 
   const kind = request.nextUrl.searchParams.get("kind") ?? "";
   if (!(KINDS as readonly string[]).includes(kind)) {
-    return apiError(400, "INVALID_KIND", "Choose payments, refunds, voids or summary.");
+    return apiError(400, "INVALID_KIND", `Choose one of: ${KINDS.join(", ")}.`);
   }
+  const format = request.nextUrl.searchParams.get("format") === "xlsx" ? "xlsx" : "csv";
 
   const today = bangkokYmd();
   const fromParam = request.nextUrl.searchParams.get("from");
@@ -44,60 +166,30 @@ export async function GET(request: NextRequest): Promise<Response> {
     return apiError(400, "RANGE_TOO_LONG", "Export at most one year at a time.");
   }
 
-  const range = customRange(from, to);
-  let csv: string;
-  let name: string;
+  try {
+    const dataset = await buildDataset(kind as Kind, from, to);
+    const ranged = RANGED.includes(kind as Kind);
+    const stem = `lifework-${kind}-${ranged ? from : today}${ranged && from !== to ? `_to_${to}` : ""}`;
 
-  if (kind === "payments") {
-    const rows = await loadPayments(range);
-    csv = toCsv(
-      [
-        "Date", "Time", "Receipt No", "Order status", "Payment channel", "Amount (THB)", "Tendered (THB)",
-        "Change (THB)", "Reference", "Card transaction ref", "Approval code", "Card", "Cashier", "Member phone",
-      ],
-      rows.map((r) => [
-        bangkokYmd(r.paidAt), bangkokTime(r.paidAt), r.receiptNo, r.orderStatus,
-        PAYMENT_METHOD_LABELS[r.method] ?? r.method, thb(r.amount),
-        r.tendered === null ? null : thb(r.tendered), r.changeGiven === null ? null : thb(r.changeGiven),
-        r.reference, r.transactionRef, r.approvalCode, r.cardMask, r.cashier, r.memberPhone,
-      ]),
-    );
-    name = "payments";
-  } else if (kind === "refunds") {
-    const rows = await loadRefunds(range);
-    csv = toCsv(
-      ["Date", "Time", "Receipt No", "Refund ID", "Refund channel", "Amount (THB)", "Reference", "Reason", "Items", "Staff"],
-      rows.map((r) => [
-        bangkokYmd(r.refundedAt), bangkokTime(r.refundedAt), r.receiptNo, r.refundId,
-        PAYMENT_METHOD_LABELS[r.method] ?? r.method, thb(r.amount), r.reference, r.reason, r.items, r.staff,
-      ]),
-    );
-    name = "refunds";
-  } else if (kind === "voids") {
-    const rows = await loadVoids(range);
-    csv = toCsv(
-      ["Date", "Time", "Receipt No", "Voided amount (THB)", "Original payment channels", "Reason", "Staff"],
-      rows.map((r) => [bangkokYmd(r.voidedAt), bangkokTime(r.voidedAt), r.receiptNo, thb(r.amount), r.channels, r.reason, r.staff]),
-    );
-    name = "voids";
-  } else {
-    const summary = await buildSummary(range);
-    csv = toCsv(
-      ["Payment channel", "Sales count", "Sales (THB)", "Refunds (THB)", "Net (THB)"],
-      [
-        ...summary.channels.map((c) => [c.label, c.salesCount, thb(c.sales), thb(c.refunds), thb(c.net)]),
-        ["TOTAL", summary.totals.saleCount, thb(summary.totals.sales), thb(summary.totals.refunds), thb(summary.totals.net)],
-      ],
-    );
-    name = "summary";
+    if (format === "xlsx") {
+      const buffer = await buildXlsx(kind, dataset.header, dataset.rows, { textColumns: dataset.textColumns });
+      return new Response(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${stem}.xlsx"`,
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+    return new Response(toCsv(dataset.header, dataset.rows), {
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${stem}.csv"`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (err) {
+    console.error("[GET /api/admin/export]", err);
+    return apiError(500, "INTERNAL_ERROR", "The export failed. Try a shorter date range.");
   }
-
-  const filename = `lifework-${name}-${from}${from === to ? "" : `_to_${to}`}.csv`;
-  return new Response(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store",
-    },
-  });
 }

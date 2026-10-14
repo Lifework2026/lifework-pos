@@ -94,6 +94,7 @@ model User {
   movements   InventoryMovement[]
   edcPayments EdcPayment[]        @relation("EdcPaymentsCreated")
   auditLogs   AuditLog[]
+  heldBills   HeldBill[]
 }
 
 // ============================================================
@@ -140,6 +141,32 @@ model Promotion {
 // CATALOG
 // ============================================================
 
+/// Managed list of sizes offered in the product forms. Variants store the size as text,
+/// so history stays intact if a size is later renamed or removed from this list.
+model Size {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([sortOrder])
+}
+
+/// A cart parked at the till so the cashier can serve someone else, then resumed later.
+/// No stock is reserved. Prices and stock are re-checked when the bill is resumed.
+model HeldBill {
+  id          String   @id @default(cuid())
+  label       String?
+  payload     Json
+  itemCount   Int
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+}
+
 model Category {
   id        String   @id @default(cuid())
   name      String
@@ -159,6 +186,10 @@ model Product {
   /// Thai display name. Falls back to `name` when empty.
   nameTh      String?
   slug        String   @unique
+  /// Public URL of the product photo in Supabase Storage.
+  imageUrl    String?
+  /// Object path inside the storage bucket, kept so the photo can be replaced or deleted.
+  imagePath   String?
   description String?
   brand       String?
   isActive    Boolean  @default(true)

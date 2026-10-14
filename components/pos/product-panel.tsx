@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ProductThumb } from "@/components/pos/product-thumb";
 import { formatBaht, parseMoney } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
@@ -154,8 +155,13 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
                   onClick={() => onSelectVariant(variant)}
                   className="text-left disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <Card className="h-full transition-colors hover:border-primary/60">
-                    <CardContent className="flex flex-col gap-2 p-4">
+                  <Card className="h-full overflow-hidden transition-colors hover:border-primary/60">
+                    <ProductThumb
+                      src={variant.product.imageUrl}
+                      alt={localizedName(locale, variant.product.name, variant.product.nameTh)}
+                      className="aspect-[4/3] w-full rounded-none"
+                    />
+                    <CardContent className="flex flex-col gap-2 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <span className="line-clamp-2 font-medium leading-snug">
                           {localizedName(locale, variant.product.name, variant.product.nameTh)}

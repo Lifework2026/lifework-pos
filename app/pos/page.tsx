@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CheckCircle2, LayoutDashboard, UserRound } from "lucide-react";
 import { CartPanel } from "@/components/pos/cart-panel";
 import { CheckoutDialog } from "@/components/pos/checkout-dialog";
+import { HeldBillsDialog } from "@/components/pos/held-bills-dialog";
 import { ProductPanel } from "@/components/pos/product-panel";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { LocaleToggle } from "@/components/locale-toggle";
@@ -12,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
+import type { HeldBillSummary, ResumedBill } from "@/lib/held-bills";
+import { requestJson } from "@/lib/http";
 import { useI18n } from "@/lib/i18n/client";
 import type { ApiErrorBody, OrderDetails, VariantSummary } from "@/lib/pos-types";
 import type { SessionUser } from "@/lib/auth/session";
@@ -22,6 +25,7 @@ function toCartVariant(variant: VariantSummary): CartVariant {
     variantId: variant.id,
     name: variant.product.name,
     nameTh: variant.product.nameTh,
+    imageUrl: variant.product.imageUrl,
     size: variant.size,
     color: variant.color,
     sku: variant.sku,
@@ -35,9 +39,14 @@ export default function PosPage() {
   const { t } = useI18n();
   const addItemByBarcode = useCartStore((state) => state.addItemByBarcode);
   const clearCart = useCartStore((state) => state.clearCart);
+  const replaceCart = useCartStore((state) => state.replaceCart);
+  const cartHasItems = useCartStore((state) => state.items.length > 0);
 
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [heldOpen, setHeldOpen] = useState(false);
+  const [heldCount, setHeldCount] = useState(0);
+  const [holding, setHolding] = useState(false);
   const [lastScannedBarcode, setLastScannedBarcode] = useState<string | null>(null);
   const [lastSale, setLastSale] = useState<OrderDetails | null>(null);
 
@@ -56,6 +65,13 @@ export default function PosPage() {
     return () => controller.abort();
     // The toast is shown once, in the language active at sign-in.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // How many bills are parked, for the badge on the Held button.
+  useEffect(() => {
+    void requestJson<{ bills: HeldBillSummary[] }>("/api/held-bills", { method: "GET" }).then((result) => {
+      if (result.ok) setHeldCount(result.data.bills.length);
+    });
   }, []);
 
   const addVariant = useCallback(
@@ -78,9 +94,7 @@ export default function PosPage() {
     async (barcode: string) => {
       setLastScannedBarcode(barcode);
       try {
-        const res = await fetch(`/api/products/search?barcode=${encodeURIComponent(barcode)}`, {
-          cache: "no-store",
-        });
+        const res = await fetch(`/api/products/search?barcode=${encodeURIComponent(barcode)}`, { cache: "no-store" });
 
         if (res.status === 404) {
           toast.add({ title: t("pos.notFound"), description: t("pos.noActiveProduct", { code: barcode }), type: "error" });
@@ -103,8 +117,61 @@ export default function PosPage() {
 
   useBarcodeScanner({
     onScan: handleScan,
-    enabled: !checkoutOpen,
+    enabled: !checkoutOpen && !heldOpen,
   });
+
+  async function holdCurrentBill(): Promise<void> {
+    const { items, discount, getTotal } = useCartStore.getState();
+    if (items.length === 0 || holding) return;
+
+    // An empty answer parks the bill without a name. Cancel keeps the cart as it is.
+    const label = window.prompt(t("hold.labelPrompt"));
+    if (label === null) return;
+
+    setHolding(true);
+    const result = await requestJson<{ id: string }>(
+      "/api/held-bills",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label: label.trim() || null,
+          discount,
+          total: getTotal(),
+          items: items.map((item) => ({ variantId: item.variantId, quantity: item.quantity, unitPrice: item.price })),
+        }),
+      },
+      { retries: 0 },
+    );
+    setHolding(false);
+
+    if (!result.ok) {
+      toast.add({ title: t("hold.holdFailed"), description: result.message ?? t("common.networkError"), type: "error" });
+      return;
+    }
+    clearCart();
+    setHeldCount((count) => count + 1);
+    toast.add({ title: t("hold.held"), description: t("hold.heldBody"), type: "success" });
+  }
+
+  function handleResumed(bill: ResumedBill): void {
+    replaceCart(
+      bill.items.map((item) => ({ ...item })),
+      bill.discount,
+    );
+    setHeldCount((count) => Math.max(0, count - 1));
+
+    if (bill.warnings.length > 0) {
+      const lines = bill.warnings.map((warning) => {
+        if (warning.kind === "REMOVED") return t("hold.warnRemoved", { sku: warning.sku });
+        if (warning.kind === "REDUCED") return t("hold.warnReduced", { sku: warning.sku, from: warning.from, to: warning.to });
+        return t("hold.warnPrice", { sku: warning.sku, from: warning.from.toFixed(2), to: warning.to.toFixed(2) });
+      });
+      toast.add({ title: t("hold.resumedWithChanges"), description: lines.join(" · "), type: "info" });
+    } else {
+      toast.add({ title: t("hold.resumed"), type: "success" });
+    }
+  }
 
   function handleCompleted(order: OrderDetails): void {
     setLastSale(order);
@@ -146,15 +213,28 @@ export default function PosPage() {
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_400px]">
         <div className="min-h-0 rounded-xl border bg-background p-4">
-          <ProductPanel onSelectVariant={addVariant} scannerActive={!checkoutOpen} lastScannedBarcode={lastScannedBarcode} />
+          <ProductPanel onSelectVariant={addVariant} scannerActive={!checkoutOpen && !heldOpen} lastScannedBarcode={lastScannedBarcode} />
         </div>
 
         <div className="min-h-[24rem] lg:min-h-0">
-          <CartPanel onCheckout={() => setCheckoutOpen(true)} />
+          <CartPanel
+            onCheckout={() => setCheckoutOpen(true)}
+            onHold={() => void holdCurrentBill()}
+            onOpenHeld={() => setHeldOpen(true)}
+            heldCount={heldCount}
+            holding={holding}
+          />
         </div>
       </div>
 
       <CheckoutDialog open={checkoutOpen} onOpenChange={setCheckoutOpen} onCompleted={handleCompleted} />
+      <HeldBillsDialog
+        open={heldOpen}
+        onOpenChange={setHeldOpen}
+        cartHasItems={cartHasItems}
+        onResumed={handleResumed}
+        onCountChange={setHeldCount}
+      />
     </main>
   );
 }

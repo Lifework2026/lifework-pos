@@ -1,6 +1,7 @@
 "use client";
 
-import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Minus, PauseCircle, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { ProductThumb } from "@/components/pos/product-thumb";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,9 +14,13 @@ import { useCartStore } from "@/store/useCartStore";
 
 interface CartPanelProps {
   onCheckout: () => void;
+  onHold: () => void;
+  onOpenHeld: () => void;
+  heldCount: number;
+  holding: boolean;
 }
 
-export function CartPanel({ onCheckout }: CartPanelProps) {
+export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }: CartPanelProps) {
   const { t, locale } = useI18n();
   const items = useCartStore((state) => state.items);
   const discount = useCartStore((state) => state.discount);
@@ -31,15 +36,29 @@ export function CartPanel({ onCheckout }: CartPanelProps) {
 
   return (
     <Card className="flex h-full min-h-0 flex-col">
-      <CardHeader className="flex flex-row items-center justify-between gap-2 border-b">
-        <CardTitle className="flex items-center gap-2 text-lg">
-          <ShoppingCart className="size-5" />
-          {t("pos.cart")}
-          <span className="text-sm font-normal text-muted-foreground">({t("pos.itemCount", { count: itemCount })})</span>
-        </CardTitle>
-        <Button variant="ghost" size="sm" onClick={clearCart} disabled={items.length === 0}>
-          {t("pos.clear")}
-        </Button>
+      <CardHeader className="flex flex-col gap-3 border-b">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <ShoppingCart className="size-5" />
+            {t("pos.cart")}
+            <span className="text-sm font-normal text-muted-foreground">({t("pos.itemCount", { count: itemCount })})</span>
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={clearCart} disabled={items.length === 0}>
+            {t("pos.clear")}
+          </Button>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" size="sm" onClick={onHold} disabled={items.length === 0 || holding}>
+            <PauseCircle className="size-4" />
+            {t("hold.hold")}
+          </Button>
+          <Button variant="outline" size="sm" onClick={onOpenHeld}>
+            {t("hold.held")}
+            {heldCount > 0 ? (
+              <span className="ml-1 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">{heldCount}</span>
+            ) : null}
+          </Button>
+        </div>
       </CardHeader>
 
       <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
@@ -55,53 +74,54 @@ export function CartPanel({ onCheckout }: CartPanelProps) {
                 const atStockLimit = item.quantity >= item.stockQuantity;
                 const name = localizedName(locale, item.name, item.nameTh);
                 return (
-                  <li key={item.variantId} className="flex flex-col gap-2 p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate font-medium">{name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.size} · {item.color} · <span className="font-mono">{item.sku}</span>
-                        </p>
+                  <li key={item.variantId} className="flex gap-3 p-4">
+                    <ProductThumb src={item.imageUrl} alt={name} className="size-14 shrink-0" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium">{name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {item.size} · {item.color} · <span className="font-mono">{item.sku}</span>
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t("pos.removeItem", { name })}
+                          onClick={() => removeItem(item.variantId)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t("pos.removeItem", { name })}
-                        onClick={() => removeItem(item.variantId)}
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
 
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="icon-sm"
-                          aria-label={t("pos.decreaseQty")}
-                          onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
-                        >
-                          <Minus className="size-4" />
-                        </Button>
-                        <span className="w-8 text-center font-semibold tabular-nums">{item.quantity}</span>
-                        <Button
-                          variant="outline"
-                          size="icon-sm"
-                          aria-label={t("pos.increaseQty")}
-                          disabled={atStockLimit}
-                          onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
-                        >
-                          <Plus className="size-4" />
-                        </Button>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            aria-label={t("pos.decreaseQty")}
+                            onClick={() => updateQuantity(item.variantId, item.quantity - 1)}
+                          >
+                            <Minus className="size-4" />
+                          </Button>
+                          <span className="w-8 text-center font-semibold tabular-nums">{item.quantity}</span>
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            aria-label={t("pos.increaseQty")}
+                            disabled={atStockLimit}
+                            onClick={() => updateQuantity(item.variantId, item.quantity + 1)}
+                          >
+                            <Plus className="size-4" />
+                          </Button>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold tabular-nums">{formatBaht(item.price * item.quantity)}</p>
+                          <p className="text-xs text-muted-foreground">{t("pos.eachPrice", { price: formatBaht(item.price) })}</p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold tabular-nums">{formatBaht(item.price * item.quantity)}</p>
-                        <p className="text-xs text-muted-foreground">{t("pos.eachPrice", { price: formatBaht(item.price) })}</p>
-                      </div>
+                      {atStockLimit ? <p className="text-xs text-amber-600">{t("pos.maxStock", { stock: item.stockQuantity })}</p> : null}
                     </div>
-                    {atStockLimit ? (
-                      <p className="text-xs text-amber-600">{t("pos.maxStock", { stock: item.stockQuantity })}</p>
-                    ) : null}
                   </li>
                 );
               })}
