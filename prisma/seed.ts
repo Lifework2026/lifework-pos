@@ -1,6 +1,11 @@
 // prisma/seed.ts
-// Idempotent seed: safe to run multiple times (uses upsert on unique keys).
-// Dev-only credentials are defined below; change them before any real deployment.
+//
+// Production-safe seed. It only CREATES missing records. It never overwrites existing
+// stock, prices, names or sales, so it is safe to run against a live database.
+//
+// Account passwords come from environment variables and are never stored in the repo:
+//   ADMIN_PASSWORD, CASHIER_PASSWORD
+// They are required the first time an account is created. Set them to rotate a password.
 
 import { PrismaClient, Role } from "@prisma/client";
 import { hashPassword } from "../lib/auth/password";
@@ -8,43 +13,19 @@ import { ean13 } from "../lib/barcode";
 
 const prisma = new PrismaClient();
 
-const SEED_CASHIER = {
-  username: "cashier",
-  password: "Lifework-dev-1234",
-  fullName: "Test Cashier",
-  role: Role.CASHIER,
-};
+const ACCOUNTS = [
+  { username: "admin", fullName: "Lifework Admin", role: Role.ADMIN, envKey: "ADMIN_PASSWORD" },
+  { username: "cashier", fullName: "Lifework Cashier", role: Role.CASHIER, envKey: "CASHIER_PASSWORD" },
+] as const;
 
-const SEED_ADMIN = {
-  username: "admin",
-  password: "Lifework-admin-1234",
-  fullName: "Store Admin",
-  role: Role.ADMIN,
-};
+/** Shopping bags are sold as line items, so they are ordinary variants with their own stock. */
+const BAGS = [
+  { sku: "BAG-SMALL", size: "Small", price: "2.00", barcode: ean13("885000900001") },
+  { sku: "BAG-LARGE", size: "Large", price: "5.00", barcode: ean13("885000900002") },
+];
 
-interface SeedVariant {
-  size: string;
-  color: string;
-  colorCode: string;
-  price: number;
-  stockQuantity: number;
-}
-
-interface SeedProduct {
-  name: string;
-  slug: string;
-  brand: string;
-  description: string;
-  variants: SeedVariant[];
-}
-
-interface SeedCategory {
-  name: string;
-  slug: string;
-  products: SeedProduct[];
-}
-
-const CATALOG: SeedCategory[] = [
+/** Demo catalogue, created once. Existing rows are left untouched. */
+const DEMO_CATALOG = [
   {
     name: "Shirts",
     slug: "shirts",
@@ -109,51 +90,91 @@ const CATALOG: SeedCategory[] = [
   },
 ];
 
-async function seedUsers(): Promise<void> {
-  // The cashier account was first seeded as "cashier1". Remove it only when no sales reference it.
-  const legacy = await prisma.user.findUnique({
-    where: { username: "cashier1" },
-    select: { id: true, _count: { select: { orders: true } } },
-  });
-  if (legacy && legacy._count.orders === 0) {
-    await prisma.user.delete({ where: { id: legacy.id } });
-  }
+async function seedAccounts(): Promise<void> {
+  for (const account of ACCOUNTS) {
+    const password = process.env[account.envKey];
+    const existing = await prisma.user.findUnique({ where: { username: account.username }, select: { id: true } });
 
-  for (const user of [SEED_CASHIER, SEED_ADMIN]) {
-    // passwordHash is updated on every run so the documented dev credentials always work.
-    await prisma.user.upsert({
-      where: { username: user.username },
-      update: { fullName: user.fullName, role: user.role, passwordHash: hashPassword(user.password), isActive: true },
-      create: {
-        username: user.username,
-        passwordHash: hashPassword(user.password),
-        fullName: user.fullName,
-        role: user.role,
+    if (!existing) {
+      if (!password) {
+        throw new Error(`${account.envKey} must be set to create the "${account.username}" account.`);
+      }
+      await prisma.user.create({
+        data: {
+          username: account.username,
+          fullName: account.fullName,
+          role: account.role,
+          passwordHash: hashPassword(password),
+        },
+      });
+      console.log(`Created account "${account.username}".`);
+      continue;
+    }
+
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: {
+        fullName: account.fullName,
+        role: account.role,
+        isActive: true,
+        ...(password ? { passwordHash: hashPassword(password) } : {}),
       },
     });
+    console.log(`Updated account "${account.username}"${password ? " (password changed)" : ""}.`);
   }
 }
 
-async function seedCatalog(): Promise<number> {
-  let barcodeSeq = 1;
-  let variantCount = 0;
+async function seedBags(): Promise<void> {
+  const category = await prisma.category.upsert({
+    where: { slug: "supplies" },
+    update: {},
+    create: { name: "Supplies", slug: "supplies" },
+  });
+  const product = await prisma.product.upsert({
+    where: { slug: "shopping-bag" },
+    update: {},
+    create: {
+      name: "Shopping Bag",
+      slug: "shopping-bag",
+      brand: "Lifework",
+      description: "Carrier bag sold at checkout.",
+      categoryId: category.id,
+    },
+  });
 
-  for (const cat of CATALOG) {
+  for (const bag of BAGS) {
+    const exists = await prisma.productVariant.findUnique({ where: { sku: bag.sku }, select: { id: true } });
+    if (exists) continue;
+    await prisma.productVariant.create({
+      data: {
+        productId: product.id,
+        size: bag.size,
+        color: "Standard",
+        sku: bag.sku,
+        barcode: bag.barcode,
+        price: bag.price,
+        stockQuantity: 500,
+      },
+    });
+    console.log(`Created ${bag.sku} with 500 units.`);
+  }
+}
+
+async function seedDemoCatalog(): Promise<number> {
+  let created = 0;
+  let barcodeSeq = 1;
+
+  for (const cat of DEMO_CATALOG) {
     const category = await prisma.category.upsert({
       where: { slug: cat.slug },
-      update: { name: cat.name },
+      update: {},
       create: { name: cat.name, slug: cat.slug },
     });
 
     for (const p of cat.products) {
       const product = await prisma.product.upsert({
         where: { slug: p.slug },
-        update: {
-          name: p.name,
-          brand: p.brand,
-          description: p.description,
-          categoryId: category.id,
-        },
+        update: {},
         create: {
           name: p.name,
           slug: p.slug,
@@ -168,21 +189,14 @@ async function seedCatalog(): Promise<number> {
         const barcode = ean13(`885000${String(barcodeSeq).padStart(6, "0")}`);
         barcodeSeq += 1;
 
-        await prisma.productVariant.upsert({
-          where: {
-            productId_size_color: {
-              productId: product.id,
-              size: v.size,
-              color: v.color,
-            },
-          },
-          update: {
-            sku,
-            barcode,
-            price: v.price,
-            stockQuantity: v.stockQuantity,
-          },
-          create: {
+        const exists = await prisma.productVariant.findUnique({
+          where: { productId_size_color: { productId: product.id, size: v.size, color: v.color } },
+          select: { id: true },
+        });
+        if (exists) continue;
+
+        await prisma.productVariant.create({
+          data: {
             productId: product.id,
             size: v.size,
             color: v.color,
@@ -192,31 +206,24 @@ async function seedCatalog(): Promise<number> {
             stockQuantity: v.stockQuantity,
           },
         });
-        variantCount += 1;
+        created += 1;
       }
     }
   }
-
-  return variantCount;
+  return created;
 }
 
 async function main(): Promise<void> {
-  console.log("Seeding users...");
-  await seedUsers();
+  await seedAccounts();
+  await seedBags();
+  const demoCreated = await seedDemoCatalog();
 
-  console.log("Seeding categories, products and variants...");
-  const variantCount = await seedCatalog();
-
-  const [categories, products, variants, users] = await Promise.all([
-    prisma.category.count(),
+  const [users, products, variants] = await Promise.all([
+    prisma.user.count(),
     prisma.product.count(),
     prisma.productVariant.count(),
-    prisma.user.count(),
   ]);
-
-  console.log(
-    `Done. Upserted ${variantCount} variants. Totals -> categories: ${categories}, products: ${products}, variants: ${variants}, users: ${users}`,
-  );
+  console.log(`Done. Demo variants created: ${demoCreated}. Totals -> users: ${users}, products: ${products}, variants: ${variants}.`);
 }
 
 main()

@@ -53,7 +53,6 @@ export interface EdcPaymentDto {
   failureReason: string | null;
   expiresAt: string;
   completedAt: string | null;
-  orderId: string | null;
   /** True when the last poll could not reach the terminal. The payment is still pending. */
   terminalUnreachable: boolean;
 }

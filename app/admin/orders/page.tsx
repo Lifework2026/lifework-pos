@@ -11,9 +11,10 @@ export const dynamic = "force-dynamic";
 
 const ROW_LIMIT = 300;
 const PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);
+const STATUSES = ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED", "VOIDED"] as const;
 
 interface OrdersPageProps {
-  searchParams: { from?: string; to?: string; receipt?: string; method?: string; cashier?: string };
+  searchParams: { from?: string; to?: string; receipt?: string; method?: string; cashier?: string; status?: string };
 }
 
 /** Sales log with filters. Defaults to today (Bangkok time) when no dates are given. */
@@ -23,59 +24,60 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const requestedTo = isYmd(searchParams.to) ? searchParams.to : undefined;
   const fromYmd = requestedFrom ?? requestedTo ?? today;
   const toYmd = requestedTo ?? requestedFrom ?? today;
-  const [rangeStartYmd, rangeEndYmd] = fromYmd <= toYmd ? [fromYmd, toYmd] : [toYmd, fromYmd];
+  const [rangeStart, rangeEnd] = fromYmd <= toYmd ? [fromYmd, toYmd] : [toYmd, fromYmd];
 
   const receipt = (searchParams.receipt ?? "").trim().slice(0, 40);
-  const method = PAYMENT_METHODS.includes(searchParams.method ?? "") ? searchParams.method! : "";
+  const method = PAYMENT_METHODS.includes(searchParams.method ?? "") ? (searchParams.method as string) : "";
   const cashierId = searchParams.cashier ?? "";
+  const status = (STATUSES as readonly string[]).includes(searchParams.status ?? "") ? (searchParams.status as string) : "";
 
   const where: Prisma.OrderWhereInput = {
-    status: "COMPLETED",
-    createdAt: {
-      gte: bangkokDayRange(rangeStartYmd).start,
-      lt: bangkokDayRange(rangeEndYmd).end,
-    },
+    createdAt: { gte: bangkokDayRange(rangeStart).start, lt: bangkokDayRange(rangeEnd).end },
     ...(receipt ? { receiptNo: { contains: receipt, mode: "insensitive" } } : {}),
-    ...(method ? { paymentMethod: method as Prisma.EnumPaymentMethodFilter["equals"] } : {}),
+    ...(method ? { payments: { some: { method: method as never } } } : {}),
     ...(cashierId ? { cashierId } : {}),
+    ...(status ? { status: status as never } : {}),
   };
 
   const [orders, totals, cashiers] = await Promise.all([
     prisma.order.findMany({ where, select: orderSelect, orderBy: { createdAt: "desc" }, take: ROW_LIMIT }),
-    prisma.order.aggregate({ where, _sum: { totalAmount: true }, _count: { _all: true } }),
+    prisma.order.aggregate({
+      where: { ...where, status: { not: "VOIDED" } },
+      _sum: { totalAmount: true },
+      _count: { _all: true },
+    }),
     prisma.user.findMany({ select: { id: true, fullName: true }, orderBy: { fullName: "asc" } }),
   ]);
 
-  const totalAmount = Number((totals._sum.totalAmount ?? new Prisma.Decimal(0)).toFixed(2));
+  const shownTotal = Number((totals._sum.totalAmount ?? new Prisma.Decimal(0)).toFixed(2));
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Sales history</h1>
         <p className="text-sm text-muted-foreground">
-          {rangeStartYmd === rangeEndYmd ? `Day ${rangeStartYmd}` : `${rangeStartYmd} to ${rangeEndYmd}`} (Bangkok time)
-          {" · "}
-          {totals._count._all} sales · {formatBaht(totalAmount)}
+          {rangeStart === rangeEnd ? `Day ${rangeStart}` : `${rangeStart} to ${rangeEnd}`} (Bangkok time) · {totals._count._all}{" "}
+          sales (voids excluded) · {formatBaht(shownTotal)}
         </p>
       </div>
 
-      <form className="grid gap-3 rounded-xl border bg-background p-4 md:grid-cols-3 xl:grid-cols-6 md:items-end">
+      <form className="grid gap-3 rounded-xl border bg-background p-4 md:grid-cols-3 xl:grid-cols-7 md:items-end">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">From</span>
-          <input type="date" name="from" defaultValue={rangeStartYmd} className="h-9 rounded-md border bg-background px-3" />
+          <input type="date" name="from" defaultValue={rangeStart} className="h-9 rounded-md border bg-background px-3" />
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">To</span>
-          <input type="date" name="to" defaultValue={rangeEndYmd} className="h-9 rounded-md border bg-background px-3" />
+          <input type="date" name="to" defaultValue={rangeEnd} className="h-9 rounded-md border bg-background px-3" />
         </label>
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">Receipt no.</span>
           <input name="receipt" defaultValue={receipt} placeholder="POS-…" className="h-9 rounded-md border bg-background px-3 font-mono" />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">Payment</span>
+          <span className="text-muted-foreground">Payment channel</span>
           <select name="method" defaultValue={method} className="h-9 rounded-md border bg-background px-3">
-            <option value="">All methods</option>
+            <option value="">All channels</option>
             {Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
@@ -84,14 +86,24 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
           </select>
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">Cashier</span>
+          <span className="text-muted-foreground">Staff</span>
           <select name="cashier" defaultValue={cashierId} className="h-9 rounded-md border bg-background px-3">
-            <option value="">All cashiers</option>
+            <option value="">All staff</option>
             {cashiers.map((cashier) => (
               <option key={cashier.id} value={cashier.id}>
                 {cashier.fullName}
               </option>
             ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="text-muted-foreground">Status</span>
+          <select name="status" defaultValue={status} className="h-9 rounded-md border bg-background px-3">
+            <option value="">All statuses</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="PARTIALLY_REFUNDED">Partly refunded</option>
+            <option value="REFUNDED">Refunded</option>
+            <option value="VOIDED">Voided</option>
           </select>
         </label>
         <div className="flex gap-2">
@@ -108,7 +120,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
 
       {totals._count._all > ROW_LIMIT ? (
         <p className="text-sm text-muted-foreground">
-          Showing the latest {ROW_LIMIT} of {totals._count._all} sales. Narrow the dates to see more.
+          Showing the latest {ROW_LIMIT} sales in this range. Narrow the dates to see more.
         </p>
       ) : null}
     </div>

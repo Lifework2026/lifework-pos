@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/admin/inventory", label: "Stock" },
   { href: "/admin/inventory/receive", label: "Receive / adjust" },
   { href: "/admin/products/new", label: "New product" },
+  { href: "/admin/promotions", label: "Promotions" },
 ];
 
 /** Back-office shell. Only managers and admins get past this layout. */

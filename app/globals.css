@@ -188,3 +188,67 @@
     font-weight: 700;
   }
 }
+
+/* Receipt preview on screen (inside a .receipt-preview container) */
+.receipt-preview .receipt-print {
+  display: block;
+  position: static;
+  width: 72mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 14px 12px;
+  background: #fff;
+  color: #000;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+}
+
+.receipt-strong {
+  font-weight: 700;
+}
+
+.receipt-flag {
+  font-size: 13px;
+  margin: 6px 0;
+}
+
+/* Receipt layout on screen (same rules as print, scoped to the preview) */
+.receipt-preview .receipt-print p {
+  margin: 0;
+}
+
+.receipt-preview .receipt-center {
+  text-align: center;
+}
+
+.receipt-preview .receipt-divider {
+  border-top: 1px dashed #000;
+  margin: 6px 0;
+}
+
+.receipt-preview .receipt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.receipt-preview .receipt-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.receipt-preview .receipt-sub {
+  font-size: 10px;
+}
+
+.receipt-preview .receipt-item {
+  margin-bottom: 4px;
+}
+
+.receipt-preview .receipt-total {
+  font-size: 13px;
+  font-weight: 700;
+}

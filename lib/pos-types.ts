@@ -23,10 +23,22 @@ export interface CategorySummary {
   slug: string;
 }
 
-export interface CashierSummary {
+export interface MemberSummary {
   id: string;
-  fullName: string;
-  username: string;
+  name: string;
+  phone: string;
+  points: number;
+}
+
+export interface PromotionSummary {
+  id: string;
+  name: string;
+  code: string | null;
+  kind: "PERCENT_OFF" | "AMOUNT_OFF";
+  scope: "ORDER" | "CATEGORY";
+  value: string;
+  minSubtotal: string;
+  endsAt: string;
 }
 
 export interface OrderItemDetails {
@@ -37,24 +49,47 @@ export interface OrderItemDetails {
   barcode: string;
   size: string;
   color: string;
+  isBag: boolean;
   quantity: number;
+  refundedQuantity: number;
   unitPrice: string;
-  lineTotal: string;
+  lineSubtotal: string;
+  discountAmount: string;
+  netAmount: string;
+  refundedAmount: string;
+}
+
+export interface PaymentDetails {
+  id: string;
+  method: string;
+  amount: string;
+  refundedAmount: string;
+  tendered: string | null;
+  changeGiven: string | null;
+  reference: string | null;
+  edcRef: { transactionRef: string | null; approvalCode: string | null; cardMask: string | null } | null;
 }
 
 export interface OrderDetails {
   id: string;
   receiptNo: string;
   status: string;
-  subtotal: string;
-  discountAmount: string;
-  totalAmount: string;
-  paymentMethod: string;
-  amountReceived: string | null;
-  changeAmount: string | null;
   createdAt: string;
+  store: { name: string; branch: string; code: string };
   cashier: { id: string; fullName: string };
-  edcPayment: { mode: string; transactionRef: string | null; approvalCode: string | null; cardMask: string | null } | null;
+  member: { name: string; phone: string; pointsEarned: number; pointsRedeemed: number } | null;
+  promotionName: string | null;
+  bagType: string;
+  subtotal: string;
+  promotionDiscount: string;
+  memberDiscount: string;
+  manualDiscount: string;
+  pointsDiscount: string;
+  totalAmount: string;
+  refundedAmount: string;
+  voidReason: string | null;
+  voidedAt: string | null;
+  payments: PaymentDetails[];
   items: OrderItemDetails[];
 }
 
@@ -63,4 +98,3 @@ export interface ApiErrorBody {
   message: string;
   details?: unknown;
 }
-

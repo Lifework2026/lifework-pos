@@ -77,7 +77,6 @@ export function toEdcPaymentDto(payment: EdcPayment, terminalUnreachable = false
     failureReason: payment.failureReason,
     expiresAt: payment.expiresAt.toISOString(),
     completedAt: payment.completedAt?.toISOString() ?? null,
-    orderId: payment.orderId,
     terminalUnreachable,
   };
 }
@@ -311,32 +310,4 @@ export async function handleEdcWebhook(payload: BridgeStatusResponse & { session
 
   const updated = await applyTerminalState(payment, toTerminalState(payload));
   return toEdcPaymentDto(updated);
-}
-
-/**
- * Links a successful payment to the order being created. Called inside the
- * checkout transaction. The guarded update fails if the payment is not approved,
- * is already used, or is for a different amount.
- */
-export async function linkEdcPaymentToOrder(
-  tx: Prisma.TransactionClient,
-  input: { paymentId: string; orderId: string; total: Prisma.Decimal },
-): Promise<void> {
-  const result = await tx.edcPayment.updateMany({
-    where: {
-      id: input.paymentId,
-      status: "SUCCESS",
-      orderId: null,
-      amount: input.total,
-    },
-    data: { orderId: input.orderId },
-  });
-
-  if (result.count !== 1) {
-    throw new EdcServiceError(
-      409,
-      "EDC_PAYMENT_NOT_AVAILABLE",
-      "This card payment is not approved, was already used, or does not match the total.",
-    );
-  }
 }

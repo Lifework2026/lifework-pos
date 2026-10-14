@@ -109,12 +109,12 @@ export function CartPanel({ onCheckout }: CartPanelProps) {
 
         <div className="flex flex-col gap-3 border-t p-4">
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
+            <span className="text-muted-foreground">Subtotal (before promotions)</span>
             <span className="tabular-nums">{formatBaht(subtotal)}</span>
           </div>
           <div className="flex items-center justify-between gap-3 text-sm">
             <label htmlFor="discount" className="text-muted-foreground">
-              Discount (฿)
+              Manual discount (฿)
             </label>
             <Input
               id="discount"

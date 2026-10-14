@@ -20,6 +20,7 @@ enum Role {
   CASHIER
 }
 
+/// Payment channels. CARD is credit card / EDC terminal.
 enum PaymentMethod {
   CASH
   CARD
@@ -30,8 +31,47 @@ enum PaymentMethod {
 
 enum OrderStatus {
   COMPLETED
-  VOIDED
+  PARTIALLY_REFUNDED
   REFUNDED
+  VOIDED
+}
+
+enum BagType {
+  NONE
+  SMALL
+  LARGE
+}
+
+enum PromotionKind {
+  PERCENT_OFF
+  AMOUNT_OFF
+}
+
+enum PromotionScope {
+  ORDER
+  CATEGORY
+}
+
+enum MovementType {
+  STOCK_IN
+  ADJUSTMENT
+  SALE
+  RETURN
+  VOID
+}
+
+enum EdcMode {
+  BRIDGE
+  SIMULATOR
+  MANUAL
+}
+
+enum EdcPaymentStatus {
+  PENDING
+  SUCCESS
+  CANCELLED
+  TIMED_OUT
+  FAILED
 }
 
 // ============================================================
@@ -48,9 +88,52 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  orders      Order[]            @relation("CashierOrders")
+  orders      Order[]             @relation("CashierOrders")
+  voidedOrders Order[]             @relation("VoidedBy")
+  refunds     Refund[]
   movements   InventoryMovement[]
-  edcPayments EdcPayment[]       @relation("EdcPaymentsCreated")
+  edcPayments EdcPayment[]        @relation("EdcPaymentsCreated")
+  auditLogs   AuditLog[]
+}
+
+// ============================================================
+// CUSTOMERS & PROMOTIONS
+// ============================================================
+
+model Member {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  name      String
+  points    Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([name])
+}
+
+model Promotion {
+  id          String         @id @default(cuid())
+  name        String
+  code        String?        @unique
+  kind        PromotionKind
+  scope       PromotionScope @default(ORDER)
+  /// Percent (0-100, two decimals) for PERCENT_OFF, baht for AMOUNT_OFF.
+  value       Decimal        @db.Decimal(12, 2)
+  categoryId  String?
+  minSubtotal Decimal        @default(0) @db.Decimal(12, 2)
+  startsAt    DateTime
+  endsAt      DateTime
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  orders   Order[]
+
+  @@index([isActive, endsAt])
 }
 
 // ============================================================
@@ -64,7 +147,8 @@ model Category {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  products Product[]
+  products   Product[]
+  promotions Promotion[]
 }
 
 model Product {
@@ -86,8 +170,7 @@ model Product {
 }
 
 /// One sellable unit: a specific product in a specific size and color.
-/// Barcode and SKU are globally unique and each has its own B-tree index,
-/// so barcode scans resolve with a single indexed lookup.
+/// Barcode and SKU are globally unique, each with its own B-tree index.
 model ProductVariant {
   id            String   @id @default(cuid())
   productId     String
@@ -101,7 +184,7 @@ model ProductVariant {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  product    Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product    Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
   orderItems OrderItem[]
   movements  InventoryMovement[]
 
@@ -115,61 +198,177 @@ model ProductVariant {
 // ============================================================
 
 model Order {
-  id             String        @id @default(cuid())
-  receiptNo      String        @unique
+  id             String      @id @default(cuid())
+  receiptNo      String      @unique
   cashierId      String
-  status         OrderStatus   @default(COMPLETED)
-  subtotal       Decimal       @db.Decimal(12, 2)
-  discountAmount Decimal       @default(0) @db.Decimal(12, 2)
-  totalAmount    Decimal       @db.Decimal(12, 2)
-  paymentMethod  PaymentMethod
-  amountReceived Decimal?      @db.Decimal(12, 2)
-  changeAmount   Decimal?      @db.Decimal(12, 2)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  status         OrderStatus @default(COMPLETED)
+  memberId       String?
+  promotionId    String?
+  bagType        BagType     @default(NONE)
 
-  cashier     User                @relation("CashierOrders", fields: [cashierId], references: [id], onDelete: Restrict)
-  items       OrderItem[]
-  movements   InventoryMovement[]
-  edcPayment  EdcPayment?
+  /// Sum of line prices before any discount (bags included).
+  subtotal          Decimal @db.Decimal(12, 2)
+  promotionDiscount Decimal @default(0) @db.Decimal(12, 2)
+  memberDiscount    Decimal @default(0) @db.Decimal(12, 2)
+  manualDiscount    Decimal @default(0) @db.Decimal(12, 2)
+  pointsDiscount    Decimal @default(0) @db.Decimal(12, 2)
+  /// Amount payable after all discounts.
+  totalAmount       Decimal @db.Decimal(12, 2)
+
+  pointsRedeemed Int     @default(0)
+  pointsEarned   Int     @default(0)
+  pointsReversed Int     @default(0)
+  refundedAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  voidReason String?
+  voidedAt   DateTime?
+  voidedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cashier   User                @relation("CashierOrders", fields: [cashierId], references: [id], onDelete: Restrict)
+  voidedBy  User?               @relation("VoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  member    Member?             @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  promotion Promotion?          @relation(fields: [promotionId], references: [id], onDelete: SetNull)
+  items     OrderItem[]
+  payments  Payment[]
+  refunds   Refund[]
+  movements InventoryMovement[]
 
   @@index([cashierId, createdAt])
   @@index([createdAt])
   @@index([status, createdAt])
+  @@index([memberId])
 }
 
-/// Line items store a snapshot of product name, SKU, barcode, size, color
-/// and price at the time of sale, so receipts stay correct after catalog edits.
+/// Line items snapshot product name, SKU, barcode, size, color and price at the time of sale.
 model OrderItem {
-  id             String  @id @default(cuid())
-  orderId        String
-  variantId      String
-  productName    String
-  sku            String
-  barcode        String
-  size           String
-  color          String
-  quantity       Int
-  unitPrice      Decimal @db.Decimal(12, 2)
-  discountAmount Decimal @default(0) @db.Decimal(12, 2)
-  lineTotal      Decimal @db.Decimal(12, 2)
+  id               String  @id @default(cuid())
+  orderId          String
+  variantId        String
+  productName      String
+  sku              String
+  barcode          String
+  size             String
+  color            String
+  isBag            Boolean @default(false)
+  quantity         Int
+  unitPrice        Decimal @db.Decimal(12, 2)
+  /// unitPrice * quantity
+  lineSubtotal     Decimal @db.Decimal(12, 2)
+  /// Share of every order-level discount allocated to this line.
+  discountAmount   Decimal @default(0) @db.Decimal(12, 2)
+  /// lineSubtotal - discountAmount. Refunds are computed from this.
+  netAmount        Decimal @db.Decimal(12, 2)
+  refundedQuantity Int     @default(0)
+  refundedAmount   Decimal @default(0) @db.Decimal(12, 2)
 
-  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant     ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  refundItems RefundItem[]
 
   @@index([orderId])
   @@index([variantId])
 }
 
+/// One tender line. An order can be paid by several lines (split payment).
+model Payment {
+  id          String        @id @default(cuid())
+  orderId     String
+  method      PaymentMethod
+  /// Amount applied to the order.
+  amount      Decimal       @db.Decimal(12, 2)
+  /// Cash handed over (CASH only). Change = tendered - amount.
+  tendered    Decimal?      @db.Decimal(12, 2)
+  changeGiven Decimal?      @db.Decimal(12, 2)
+  /// Slip / transfer / QR reference, or the EDC transaction reference.
+  reference   String?
+  /// Set for card payments. Unique, so one approved terminal payment settles one line only.
+  edcPaymentId String?      @unique
+  /// Amount already returned to the customer through this line.
+  refundedAmount Decimal    @default(0) @db.Decimal(12, 2)
+  createdAt   DateTime      @default(now())
+
+  order       Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  edcPayment  EdcPayment?  @relation(fields: [edcPaymentId], references: [id], onDelete: SetNull)
+  refundLines RefundLine[]
+
+  @@index([orderId])
+  @@index([method, createdAt])
+}
+
+/// One refund action. Money goes back through one or more RefundLine rows, one per original payment line.
+model Refund {
+  id          String   @id @default(cuid())
+  orderId     String
+  amount      Decimal  @db.Decimal(12, 2)
+  reason      String
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  order     Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  createdBy User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  items     RefundItem[]
+  lines     RefundLine[]
+
+  @@index([orderId])
+  @@index([createdAt])
+}
+
+/// Money returned through the same channel the customer paid with. Drives the channel reconciliation.
+model RefundLine {
+  id        String        @id @default(cuid())
+  refundId  String
+  paymentId String
+  method    PaymentMethod
+  amount    Decimal       @db.Decimal(12, 2)
+  /// Transfer slip, QR or card-reversal reference for the money going back. Required for non-cash channels.
+  reference String?
+  createdAt DateTime      @default(now())
+
+  refund  Refund  @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@index([refundId])
+  @@index([paymentId])
+  @@index([method, createdAt])
+}
+
+model RefundItem {
+  id          String  @id @default(cuid())
+  refundId    String
+  orderItemId String
+  quantity    Int
+  amount      Decimal @db.Decimal(12, 2)
+
+  refund    Refund    @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@index([refundId])
+  @@index([orderItemId])
+}
+
+/// Append-only record of sensitive actions (voids, refunds, adjustments).
+model AuditLog {
+  id         String   @id @default(cuid())
+  action     String
+  entityType String
+  entityId   String
+  reason     String?
+  details    Json?
+  userId     String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
 // ============================================================
 // INVENTORY LEDGER
 // ============================================================
-
-enum MovementType {
-  STOCK_IN
-  ADJUSTMENT
-  SALE
-}
 
 /// Append-only log of every stock change. `stockBefore + quantityChange == stockAfter`.
 model InventoryMovement {
@@ -198,22 +397,7 @@ model InventoryMovement {
 // BANK EDC (CARD TERMINAL) PAYMENTS
 // ============================================================
 
-enum EdcMode {
-  BRIDGE
-  SIMULATOR
-  MANUAL
-}
-
-enum EdcPaymentStatus {
-  PENDING
-  SUCCESS
-  CANCELLED
-  TIMED_OUT
-  FAILED
-}
-
-/// One card payment attempt on an EDC terminal. A successful payment is linked
-/// to exactly one order (`orderId` is unique), so it cannot pay two sales.
+/// One card payment attempt on an EDC terminal. A successful payment settles at most one payment line.
 model EdcPayment {
   id                String           @id @default(cuid())
   mode              EdcMode
@@ -224,15 +408,14 @@ model EdcPayment {
   approvalCode      String?
   cardMask          String?
   failureReason     String?
-  orderId           String?          @unique
   createdById       String?
   expiresAt         DateTime
   completedAt       DateTime?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
 
-  order     Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  createdBy User?   @relation("EdcPaymentsCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy User?    @relation("EdcPaymentsCreated", fields: [createdById], references: [id], onDelete: SetNull)
+  payment   Payment?
 
   @@index([status, createdAt])
 }
