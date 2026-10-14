@@ -52,6 +52,20 @@ enum PromotionScope {
   CATEGORY
 }
 
+enum ShiftStatus {
+  OPEN
+  CLOSED
+}
+
+/// Why stock was changed by hand. Sales, returns and voids are explained by their receipt instead.
+enum StockReason {
+  DAMAGED
+  LOST
+  COUNT_CORRECTION
+  FOUND
+  OTHER
+}
+
 enum MovementType {
   STOCK_IN
   ADJUSTMENT
@@ -95,6 +109,9 @@ model User {
   edcPayments EdcPayment[]        @relation("EdcPaymentsCreated")
   auditLogs   AuditLog[]
   heldBills   HeldBill[]
+  shifts         Shift[] @relation("ShiftOwner")
+  closedShifts   Shift[] @relation("ShiftClosedBy")
+  reviewedShifts Shift[] @relation("ShiftReviewedBy")
 }
 
 // ============================================================
@@ -275,6 +292,16 @@ model Order {
   @@index([createdAt])
   @@index([status, createdAt])
   @@index([memberId])
+
+  /// Shift (cash drawer) the sale was rung up in.
+  shiftId     String?
+  /// Shift whose drawer paid the cash back when the bill was voided.
+  voidShiftId String?
+  shift       Shift?  @relation("ShiftSales", fields: [shiftId], references: [id], onDelete: SetNull)
+  voidShift   Shift?  @relation("ShiftVoids", fields: [voidShiftId], references: [id], onDelete: SetNull)
+
+  @@index([shiftId])
+  @@index([voidShiftId])
 }
 
 /// Line items snapshot product name, SKU, barcode, size, color and price at the time of sale.
@@ -351,6 +378,12 @@ model Refund {
 
   @@index([orderId])
   @@index([createdAt])
+
+  /// Shift whose drawer paid out any cash part of this refund.
+  shiftId String?
+  shift   Shift?  @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+
+  @@index([shiftId])
 }
 
 /// Money returned through the same channel the customer paid with. Drives the channel reconciliation.
@@ -428,6 +461,12 @@ model InventoryMovement {
   @@index([variantId, createdAt])
   @@index([type, createdAt])
   @@index([orderId])
+
+  /// Set for manual adjustments (damage, loss, count correction...).
+  reasonCode StockReason?
+
+  @@index([userId, createdAt])
+  @@index([createdAt])
 }
 
 // ============================================================
@@ -455,4 +494,43 @@ model EdcPayment {
   payment   Payment?
 
   @@index([status, createdAt])
+}
+
+/// One cash-drawer session. A cashier declares the opening float, rings up sales, then counts the drawer at the end.
+/// At most one OPEN shift per user (partial unique index in the migration).
+model Shift {
+  id           String      @id @default(cuid())
+  userId       String
+  status       ShiftStatus @default(OPEN)
+  openedAt     DateTime    @default(now())
+  /// Cash put in the drawer to start the shift.
+  openingFloat Decimal     @db.Decimal(12, 2)
+  openNote     String?
+
+  closedAt     DateTime?
+  closedById   String?
+  /// Cash the system expects: float + cash sales - cash refunds - cash from voided bills.
+  expectedCash Decimal?    @db.Decimal(12, 2)
+  /// Cash the cashier counted and declared.
+  countedCash  Decimal?    @db.Decimal(12, 2)
+  /// counted - expected. Negative is short, positive is over.
+  variance     Decimal?    @db.Decimal(12, 2)
+  closeNote    String?
+  /// Totals at close: sales by channel, refunds, voids, receipt counts.
+  summary      Json?
+
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewNote   String?
+
+  user       User     @relation("ShiftOwner", fields: [userId], references: [id], onDelete: Restrict)
+  closedBy   User?    @relation("ShiftClosedBy", fields: [closedById], references: [id], onDelete: SetNull)
+  reviewedBy User?    @relation("ShiftReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  orders     Order[]  @relation("ShiftSales")
+  voids      Order[]  @relation("ShiftVoids")
+  refunds    Refund[]
+
+  @@index([userId, status])
+  @@index([openedAt])
+  @@index([status, openedAt])
 }

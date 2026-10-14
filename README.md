@@ -4,7 +4,7 @@ Point-of-sale and back-office for a Thai fashion-retail branch (Mega Bangna). Ne
 
 ## What is in it
 
-**Till (`/pos`)** — product grid with photos and category tabs, barcode scanner and search, cart with shopping bags, member lookup and points, promotions and codes, split payments (cash, card/EDC, PromptPay QR, bank transfer), receipt preview (store code, branch, staff), hold and resume bills, and manager-only itemized refunds and full voids that restore stock and reverse points automatically.
+**Till (`/pos`)** — shift open/close with a declared cash float, product grid with photos and category tabs, barcode scanner and search, cart with shopping bags, member lookup and points, promotions and codes, split payments (cash, card/EDC, PromptPay QR, bank transfer), receipt preview (store code, branch, staff), hold and resume bills, and manager-only itemized refunds and full voids that restore stock and reverse points automatically.
 
 **Back-office (`/admin`, managers and admins)**
 
@@ -12,9 +12,11 @@ Point-of-sale and back-office for a Thai fashion-retail branch (Mega Bangna). Ne
 | --- | --- |
 | Dashboard | Daily and monthly sales, hourly/daily chart, split by payment method, stock alerts, one-click Excel/CSV exports |
 | Sales | Order list, receipts, refunds and voids |
+| Shifts | Every cash-drawer session: float, expected cash, counted cash, over/short; manager review and sign-off; force-close a forgotten shift; export |
 | Products | Search, create, edit, delete or deactivate; sizes, colors, prices, barcodes; photo upload |
 | Products > Import | Excel/CSV bulk import with a downloadable template, a dry-run check, and an all-or-nothing commit |
-| Stock / Receive | Stock overview; receive shipments and post adjustments (every change is logged to the stock ledger) |
+| Stock / Receive | Stock overview; receive shipments and post adjustments with a reason (damaged, lost, count correction, found, other) |
+| Stock history | The full stock ledger: every sale, refund, void, restock and adjustment with exact time, quantity, reason and staff member; filters and export |
 | Categories & sizes | Add, rename, reorder and delete categories and sizes |
 | Members | Member list, edit, spend, manual point adjustments with a reason |
 | Promotions | Percent or baht discounts, whole bill or one category, minimum spend, dates, optional code |
@@ -74,18 +76,51 @@ npx prisma migrate dev --name <change>      # local: create a new migration
 
 1. Add the environment variables above under Project Settings > Environment Variables (Production).
 2. `npm run build` runs `prisma generate` and `next build`.
-3. Run `npm run db:migrate` once against the production database (and again whenever a new migration is added).
+3. Run `npm run db:migrate` against the production database before the new version goes live, and again whenever a migration is added. Checkout needs the shift tables, so deploying code before its migration breaks selling.
 4. Check `GET /api/health` after deploy.
 
 ## Tests
 
 ```bash
-npm test          # pricing engine and catalogue import/storage unit tests
+npm test          # pricing engine, catalogue import/storage, cash-drawer maths and role-guard tests
 npx tsc --noEmit  # typecheck
 npm run build     # production build
 ```
 
-## Roles
+## Shifts and cash
 
-- **CASHIER**: the till, including hold and resume.
-- **MANAGER / ADMIN**: back-office, refunds and voids, catalogue, members, promotions, exports.
+A cashier opens a shift by declaring the starting cash in the drawer; nothing can be sold until a shift is open, and every receipt is tied to the shift that rang it up. At the end the cashier counts the drawer and declares the total. The count is blind: the expected amount is only shown after closing.
+
+    expected cash = starting float
+                  + cash taken on the shift's sales (net of change given)
+                  - cash refunded to customers from this drawer
+                  - cash returned on bills voided from this drawer
+
+The expected amount is computed on the server from the receipts, never sent by the browser. A difference (over or short) needs a written note. The closing figures and a per-channel summary are saved on the shift, an audit entry is written, and managers review each closed shift under **Shifts**. Refunds and voids are paid from the drawer of the shift that took the sale if it is still open, otherwise from the acting user's open shift, otherwise from the most recently opened shift. If cash has to be paid back and no shift is open, the refund or void is refused so the cash is never unrecorded. Each user can have one open shift at a time (enforced by the database).
+
+## Stock ledger
+
+Every stock change writes a row to `InventoryMovement` in the same transaction as the change itself: `SALE`, `RETURN` (refund), `VOID`, `STOCK_IN` (restock, opening stock, import) and `ADJUSTMENT`. Each row stores the variant, quantity change, stock before and after, the receipt or supplier reference, a note (for refunds and voids, the reason given), a reason code for manual adjustments, the staff member, and the exact time. **Stock history** shows and exports them; it also warns if a variant's stock no longer matches its last ledger entry (stock changed outside the app).
+
+## Printing receipts (80mm thermal)
+
+The Print button renders the receipt into a separate `#print-root` element and the print stylesheet removes everything else from the page, so no buttons or navigation reach the paper and no blank pages are fed out. Set up the printer once:
+
+1. Install the thermal printer's driver and set its default paper to the 80mm roll (for example "80mm x Receipt"). A browser cannot request "80mm wide, any height" from CSS, so the roll size comes from the driver.
+2. In the browser's print dialog choose that printer, scale 100%, margins none, and turn off headers and footers. The page already asks for no margin.
+3. For one-click printing, start Chrome or Edge with `--kiosk-printing` so the dialog is skipped.
+
+## Roles and access
+
+| | Cashier | Manager / Admin |
+| --- | --- | --- |
+| Till: sell, hold and resume bills | yes | yes |
+| Open and close own shift | yes | yes |
+| Member lookup and registration at the till | yes | yes |
+| Back-office pages, dashboards, exports | no | yes |
+| Refunds and voids | no | yes |
+| Stock receive and adjustments, catalogue, import | no | yes |
+| Members admin and point adjustments, promotions | no | yes |
+| Review shifts, close someone else's shift | no | yes |
+
+Access is enforced three times: the middleware sends cashiers away from `/admin` and answers `/api/admin` with 403; every `/api/admin` handler checks for a manager itself (`requireManager`, which re-reads the role from the database, so a demoted or deactivated account loses access immediately even with a valid session); and a unit test fails the build if an admin handler is added without that check.

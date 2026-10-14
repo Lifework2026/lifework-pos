@@ -5,7 +5,6 @@ import { useI18n } from "@/lib/i18n/client";
 import { paymentLabel, localizedName } from "@/lib/payment-labels";
 import type { OrderDetails } from "@/lib/pos-types";
 
-const RECEIPT_ID = "receipt-print";
 
 interface ReceiptProps {
   order: OrderDetails;
@@ -32,7 +31,7 @@ export function Receipt({ order }: ReceiptProps) {
   const refunded = parseMoney(order.refundedAmount) > 0;
 
   return (
-    <div id={RECEIPT_ID} className="receipt-print" aria-hidden={voided ? undefined : true}>
+    <div className="receipt-print" aria-hidden={voided ? undefined : true}>
       <div className="receipt-center">
         <p className="receipt-title">{order.store.name.toUpperCase()}</p>
         <p className="receipt-strong">{t("receipt.branch", { branch: order.store.branch })}</p>

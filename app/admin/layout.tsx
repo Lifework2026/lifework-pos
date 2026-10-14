@@ -12,8 +12,10 @@ export const dynamic = "force-dynamic";
 const NAV_ITEMS: { href: string; key: MessageKey }[] = [
   { href: "/admin", key: "nav.dashboard" },
   { href: "/admin/orders", key: "nav.sales" },
+  { href: "/admin/shifts", key: "nav.shifts" },
   { href: "/admin/products", key: "nav.products" },
   { href: "/admin/inventory", key: "nav.stock" },
+  { href: "/admin/inventory/ledger", key: "nav.ledger" },
   { href: "/admin/inventory/receive", key: "nav.receive" },
   { href: "/admin/catalog", key: "nav.catalog" },
   { href: "/admin/members", key: "nav.members" },

@@ -39,6 +39,22 @@ export function formatBangkokDateTime(date: Date): string {
   });
 }
 
+/** Exact moment in store time with seconds, e.g. "15/10/2026 14:03:27". Used where the precise time matters (audit logs). */
+export function bangkokStamp(date: Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: STORE_TIMEZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const pick = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${pick("day")}/${pick("month")}/${pick("year")} ${pick("hour")}:${pick("minute")}:${pick("second")}`;
+}
+
 /** Hour of day (0-23) in store time. */
 export function bangkokHour(date: Date): number {
   return Number(

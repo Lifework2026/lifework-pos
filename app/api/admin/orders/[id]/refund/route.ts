@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { getCurrentSession } from "@/lib/auth/server";
+import { requireManager } from "@/lib/api-helpers";
 import { OrderError } from "@/lib/orders/errors";
 import { serializeOrder } from "@/lib/orders/serialize";
 import { runRefund, TRANSACTION_OPTIONS } from "@/lib/orders/returns";
@@ -35,8 +35,9 @@ const refundSchema = z.object({
 
 /** POST /api/admin/orders/[id]/refund: refunds selected units, restocks them and reverses earned points. Managers only. */
 export async function POST(request: NextRequest, { params }: { params: { id: string } }): Promise<Response> {
-  const session = await getCurrentSession();
-  if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
+  const auth = await requireManager();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   let payload: unknown;
   try {

@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +13,7 @@ const patchSchema = z.object({
 
 /** PATCH /api/admin/sizes/[id]: renames a size (updating every variant that uses it) or changes its order. */
 export async function PATCH(request: Request, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, patchSchema);
   if ("response" in body) return body.response;
@@ -55,7 +55,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
 /** DELETE /api/admin/sizes/[id]: a size that variants still use cannot be removed. */
 export async function DELETE(_request: Request, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
 
   const existing = await prisma.size.findUnique({ where: { id: params.id } });

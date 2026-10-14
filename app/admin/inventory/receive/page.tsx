@@ -13,6 +13,9 @@ import type { ApiErrorBody, VariantSummary } from "@/lib/pos-types";
 
 type MovementMode = "STOCK_IN" | "ADJUSTMENT";
 
+const REASON_CODES = ["DAMAGED", "LOST", "COUNT_CORRECTION", "FOUND", "OTHER"] as const;
+type ReasonCode = (typeof REASON_CODES)[number];
+
 interface ReceiveLine {
   variant: VariantSummary;
   quantityChange: number;
@@ -32,6 +35,7 @@ export default function ReceiveStockPage() {
   const [mode, setMode] = useState<MovementMode>("STOCK_IN");
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
+  const [reasonCode, setReasonCode] = useState<ReasonCode | "">("");
   const [lines, setLines] = useState<ReceiveLine[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<VariantSummary[]>([]);
@@ -120,7 +124,8 @@ export default function ReceiveStockPage() {
     }
     if (mode === "ADJUSTMENT") {
       if (lines.some((line) => line.quantityChange === 0)) return t("receive.errQtyAdj");
-      if (note.trim().length < 3) return t("receive.errReason");
+      if (!reasonCode) return t("receive.errReason");
+      if (reasonCode === "OTHER" && note.trim().length < 3) return t("receive.errReasonOther");
     }
     return null;
   }
@@ -142,6 +147,7 @@ export default function ReceiveStockPage() {
           type: mode,
           reference: reference.trim() || null,
           note: note.trim() || null,
+          reasonCode: mode === "ADJUSTMENT" ? reasonCode || null : null,
           lines: lines.map((line) => ({ variantId: line.variant.id, quantityChange: line.quantityChange })),
         }),
       });
@@ -157,6 +163,7 @@ export default function ReceiveStockPage() {
       setLines([]);
       setReference("");
       setNote("");
+      setReasonCode("");
       toast.add({
         title: mode === "STOCK_IN" ? t("receive.toastIn") : t("receive.toastAdj"),
         description: t("receive.toastBody", { count: body.results.length }),
@@ -191,6 +198,7 @@ export default function ReceiveStockPage() {
                 onClick={() => {
                   setMode(value);
                   setLines([]);
+                  setReasonCode("");
                   setError(null);
                 }}
               >
@@ -340,9 +348,27 @@ export default function ReceiveStockPage() {
               </span>
               <Input value={reference} onChange={(event) => setReference(event.target.value)} maxLength={100} />
             </label>
+            {mode === "ADJUSTMENT" ? (
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="text-muted-foreground">{t("receive.reasonAdj")}</span>
+                <select
+                  value={reasonCode}
+                  onChange={(event) => setReasonCode(event.target.value as ReasonCode | "")}
+                  className="h-9 rounded-md border bg-background px-3"
+                  aria-label={t("receive.reasonAdj")}
+                >
+                  <option value="">{t("receive.reasonChoose")}</option>
+                  {REASON_CODES.map((code) => (
+                    <option key={code} value={code}>
+                      {t(`stockReason.${code}` as const)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-muted-foreground">
-                {mode === "ADJUSTMENT" ? t("receive.reasonAdj") : t("receive.noteOpt")}
+                {mode === "ADJUSTMENT" && reasonCode === "OTHER" ? t("receive.noteRequired") : t("receive.noteOpt")}
               </span>
               <Input value={note} onChange={(event) => setNote(event.target.value)} maxLength={300} />
             </label>

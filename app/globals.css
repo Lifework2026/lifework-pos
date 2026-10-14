@@ -123,87 +123,54 @@
     @apply font-sans;
   }
 }
-/* Thermal receipt: hidden on screen, printed on 80mm paper */
+/* ------------------------------------------------------------------------------------------------
+   Thermal receipt (80mm paper)
+
+   The receipt is drawn in two places with the same rules:
+   - .receipt-preview: the on-screen preview inside a dialog.
+   - #print-root: a copy appended to <body> by usePrintReceipt(), hidden on screen. When printing, everything
+     else on the page is removed (display: none, so it takes up no space and no blank pages come out), and
+     only #print-root is laid out, 80mm wide with no page margin.
+   ------------------------------------------------------------------------------------------------ */
+#print-root {
+  display: none;
+}
+
 .receipt-print {
   display: none;
 }
 
-@media print {
-  @page {
-    size: 80mm auto;
-    margin: 4mm;
-  }
-
-  body * {
-    visibility: hidden;
-  }
-
-  .receipt-print,
-  .receipt-print * {
-    visibility: visible;
-  }
-
-  .receipt-print {
-    display: block;
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 72mm;
-    color: #000;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 11px;
-    line-height: 1.35;
-  }
-
-  .receipt-center {
-    text-align: center;
-  }
-
-  .receipt-title {
-    font-size: 16px;
-    font-weight: 700;
-  }
-
-  .receipt-divider {
-    border-top: 1px dashed #000;
-    margin: 6px 0;
-  }
-
-  .receipt-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .receipt-sub {
-    font-size: 10px;
-  }
-
-  .receipt-item {
-    margin-bottom: 4px;
-  }
-
-  .receipt-total {
-    font-size: 13px;
-    font-weight: 700;
-  }
-}
-
-/* Receipt preview on screen (inside a .receipt-preview container) */
-.receipt-preview .receipt-print {
+.receipt-preview .receipt-print,
+#print-root .receipt-print {
   display: block;
-  position: static;
   width: 72mm;
   max-width: 100%;
   margin: 0 auto;
-  padding: 14px 12px;
   background: #fff;
   color: #000;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Leelawadee UI", Tahoma, monospace;
   font-size: 12px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.receipt-preview .receipt-print {
+  padding: 14px 12px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
   border-radius: 4px;
+}
+
+.receipt-print p {
+  margin: 0;
+}
+
+.receipt-center {
+  text-align: center;
+}
+
+.receipt-title {
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .receipt-strong {
@@ -215,40 +182,90 @@
   margin: 6px 0;
 }
 
-/* Receipt layout on screen (same rules as print, scoped to the preview) */
-.receipt-preview .receipt-print p {
-  margin: 0;
-}
-
-.receipt-preview .receipt-center {
-  text-align: center;
-}
-
-.receipt-preview .receipt-divider {
+.receipt-divider {
   border-top: 1px dashed #000;
   margin: 6px 0;
 }
 
-.receipt-preview .receipt-row {
+.receipt-row {
   display: flex;
   justify-content: space-between;
   gap: 8px;
 }
 
-.receipt-preview .receipt-title {
-  font-size: 16px;
-  font-weight: 700;
+.receipt-row > span:first-child {
+  min-width: 0;
 }
 
-.receipt-preview .receipt-sub {
+.receipt-row > span:last-child {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.receipt-sub {
   font-size: 10px;
 }
 
-.receipt-preview .receipt-item {
+.receipt-item {
   margin-bottom: 4px;
 }
 
-.receipt-preview .receipt-total {
+.receipt-total {
   font-size: 13px;
   font-weight: 700;
+}
+
+@media print {
+  /*
+   * No page margin, so the browser adds no header, footer or date line. The paper size comes from the printer:
+   * choose the 80mm roll in the thermal printer's driver (for example "80mm x Receipt"), which cuts after the last line.
+   * CSS cannot ask for "80mm wide, any height", so the width is set on the content below instead.
+   */
+  @page {
+    margin: 0;
+  }
+
+  html,
+  body {
+    width: 80mm !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  /* Remove the whole web UI from the printout: navigation, buttons, dialogs, toasts. */
+  body > *:not(#print-root) {
+    display: none !important;
+  }
+
+  #print-root {
+    display: block !important;
+    width: 80mm;
+    box-sizing: border-box;
+    padding: 4mm 4mm 10mm;
+    background: #fff;
+  }
+
+  #print-root .receipt-print {
+    width: 100%;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .receipt-row,
+  .receipt-item,
+  .receipt-divider {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
 }

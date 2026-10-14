@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 import { randomStoreEan13 } from "@/lib/barcode";
 import { defaultSku, ImageBindingError, validateImageBinding } from "@/lib/catalog/sku";
 import { ensureSizes } from "@/lib/catalog/sizes";
@@ -60,7 +60,7 @@ class ProductError extends Error {
 
 /** POST /api/admin/products: creates a product, its variants and any opening stock in one transaction. */
 export async function POST(request: NextRequest): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, productSchema);
   if ("response" in body) return body.response;

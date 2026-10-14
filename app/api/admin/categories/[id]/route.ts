@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ const patchSchema = z.object({
 
 /** PATCH /api/admin/categories/[id]: renames a category. The slug stays the same. */
 export async function PATCH(request: Request, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, patchSchema);
   if ("response" in body) return body.response;
@@ -41,7 +41,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
 /** DELETE /api/admin/categories/[id]: only an empty category can be removed. */
 export async function DELETE(_request: Request, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
 
   const category = await prisma.category.findUnique({

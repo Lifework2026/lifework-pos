@@ -1,10 +1,11 @@
 import { OrderStatus, Prisma, type PaymentMethod } from "@prisma/client";
 import { allocateRefund, PricingError, refundShare, satangToDecimal } from "@/lib/pricing";
 import { OrderError } from "@/lib/orders/errors";
+import { requireDrawerForCash, resolveCashShift } from "@/lib/shifts";
 import { orderSelect, type OrderRecord } from "@/lib/orders/serialize";
 
 /** Order fields the return rules need on top of the serialized shape. */
-const returnSelect = { ...orderSelect, memberId: true, pointsReversed: true } as const;
+const returnSelect = { ...orderSelect, memberId: true, pointsReversed: true, shiftId: true } as const;
 type OrderWithRefs = Prisma.OrderGetPayload<{ select: typeof returnSelect }>;
 
 /**
@@ -48,6 +49,7 @@ async function restock(
   orderId: string,
   receiptNo: string,
   userId: string,
+  reason: string,
 ): Promise<void> {
   for (const line of lines) {
     if (line.units <= 0) continue;
@@ -67,7 +69,7 @@ async function restock(
         stockBefore: variant.stockQuantity,
         stockAfter: variant.stockQuantity + line.units,
         reference: receiptNo,
-        note: type === "VOID" ? "Order voided" : "Refund",
+        note: `${type === "VOID" ? "Void" : "Refund"}: ${reason}`,
         orderId,
         userId,
       },
@@ -91,6 +93,11 @@ export function runVoid(
       throw new OrderError(409, "HAS_REFUNDS", "This order has refunds. Refund the remaining items instead of voiding.");
     }
 
+    // Cash handed back for a voided bill comes out of a cash drawer, so one must be open to record it.
+    const voidCashSatang = order.payments.filter((p) => p.method === "CASH").reduce((sum, p) => sum + toSatang(p.amount), 0);
+    const voidShiftId = await resolveCashShift(tx, order.shiftId, userId);
+    requireDrawerForCash(voidShiftId, voidCashSatang);
+
     await restock(
       tx,
       order.items.map((item) => ({
@@ -102,6 +109,7 @@ export function runVoid(
       order.id,
       order.receiptNo,
       userId,
+      reason,
     );
 
     for (const item of order.items) {
@@ -131,6 +139,7 @@ export function runVoid(
         voidReason: reason,
         voidedAt: now,
         voidedById: userId,
+        voidShiftId,
         pointsReversed: order.pointsEarned,
         refundedAmount: order.totalAmount,
       },
@@ -245,6 +254,11 @@ export function runRefund(
       return { paymentId: payment.id, method: payment.method, amountSatang: part.amountSatang, reference: referenceFor(payment.method) };
     });
 
+    // Cash paid back comes out of a cash drawer, so one must be open to record it.
+    const refundCashSatang = refundLines.filter((line) => line.method === "CASH").reduce((sum, line) => sum + line.amountSatang, 0);
+    const refundShiftId = await resolveCashShift(tx, order.shiftId, userId);
+    requireDrawerForCash(refundShiftId, refundCashSatang);
+
     for (const line of refundLines) {
       const payment = paymentById.get(line.paymentId);
       if (!payment) continue;
@@ -261,6 +275,7 @@ export function runRefund(
       order.id,
       order.receiptNo,
       userId,
+      input.reason,
     );
 
     for (const line of plan) {
@@ -324,6 +339,7 @@ export function runRefund(
         amount: satangToDecimal(refundSatang),
         reason: input.reason,
         createdById: userId,
+        shiftId: refundShiftId,
         items: {
           create: plan.map((line) => ({
             orderItemId: line.item.id,

@@ -11,6 +11,7 @@ import { normalizePaymentLines, type NormalizedPaymentLine } from "@/lib/orders/
 import { checkoutSchema, type CheckoutInput } from "@/lib/orders/schemas";
 import { orderSelect, serializeOrder, type OrderRecord } from "@/lib/orders/serialize";
 import { EdcServiceError } from "@/lib/edc/service";
+import { getOpenShift } from "@/lib/shifts";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,10 @@ async function verifyCardPayments(tx: Prisma.TransactionClient, payments: Normal
 }
 
 async function placeOrder(tx: Prisma.TransactionClient, input: CheckoutInput, cashierId: string): Promise<OrderRecord> {
+  // Every sale belongs to a cash-drawer shift, so the drawer can be counted against the receipts.
+  const shift = await getOpenShift(tx, cashierId);
+  if (!shift) throw new OrderError(409, "SHIFT_REQUIRED", "Open a shift and declare the starting cash before selling.");
+
   const basket: PricedBasket = await priceBasket(tx, toBasketInput(input));
   const pricing: PricingResult = basket.pricing;
 
@@ -108,6 +113,7 @@ async function placeOrder(tx: Prisma.TransactionClient, input: CheckoutInput, ca
     data: {
       receiptNo,
       cashierId,
+      shiftId: shift.id,
       status: OrderStatus.COMPLETED,
       memberId: basket.member?.id ?? null,
       promotionId: basket.promotion?.id ?? null,

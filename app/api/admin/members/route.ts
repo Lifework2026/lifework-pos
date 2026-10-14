@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 import { normalizePhone } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ const createSchema = z.object({
 
 /** GET /api/admin/members?q=: members with their points and lifetime spend. */
 export async function GET(request: NextRequest): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
 
   const q = (request.nextUrl.searchParams.get("q") ?? "").trim().slice(0, 60);
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 /** POST /api/admin/members: registers a member. */
 export async function POST(request: Request): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, createSchema);
   if ("response" in body) return body.response;

@@ -7,6 +7,7 @@ import { CartPanel } from "@/components/pos/cart-panel";
 import { CheckoutDialog } from "@/components/pos/checkout-dialog";
 import { HeldBillsDialog } from "@/components/pos/held-bills-dialog";
 import { ProductPanel } from "@/components/pos/product-panel";
+import { ShiftManager } from "@/components/pos/shift-manager";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { LocaleToggle } from "@/components/locale-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,8 @@ export default function PosPage() {
   const [holding, setHolding] = useState(false);
   const [lastScannedBarcode, setLastScannedBarcode] = useState<string | null>(null);
   const [lastSale, setLastSale] = useState<OrderDetails | null>(null);
+  const [shiftOpen, setShiftOpen] = useState(false);
+  const [salesVersion, setSalesVersion] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -117,7 +120,7 @@ export default function PosPage() {
 
   useBarcodeScanner({
     onScan: handleScan,
-    enabled: !checkoutOpen && !heldOpen,
+    enabled: !checkoutOpen && !heldOpen && shiftOpen,
   });
 
   async function holdCurrentBill(): Promise<void> {
@@ -175,6 +178,7 @@ export default function PosPage() {
 
   function handleCompleted(order: OrderDetails): void {
     setLastSale(order);
+    setSalesVersion((version) => version + 1);
     clearCart();
     setLastScannedBarcode(null);
   }
@@ -194,6 +198,7 @@ export default function PosPage() {
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ShiftManager onOpenChange={setShiftOpen} cartHasItems={cartHasItems} salesVersion={salesVersion} />
           <LocaleToggle />
           {user ? (
             <Badge variant="outline" className="gap-1 py-1">
@@ -213,7 +218,7 @@ export default function PosPage() {
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_400px]">
         <div className="min-h-0 rounded-xl border bg-background p-4">
-          <ProductPanel onSelectVariant={addVariant} scannerActive={!checkoutOpen && !heldOpen} lastScannedBarcode={lastScannedBarcode} />
+          <ProductPanel onSelectVariant={addVariant} scannerActive={!checkoutOpen && !heldOpen && shiftOpen} lastScannedBarcode={lastScannedBarcode} />
         </div>
 
         <div className="min-h-[24rem] lg:min-h-0">

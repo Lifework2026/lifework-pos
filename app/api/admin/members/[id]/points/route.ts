@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ const adjustSchema = z.object({
  * or a correction. The balance can never go below zero. Every adjustment is written to the audit log.
  */
 export async function POST(request: Request, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, adjustSchema);
   if ("response" in body) return body.response;

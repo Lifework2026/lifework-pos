@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { apiError } from "@/lib/api";
-import { requireUser } from "@/lib/api-helpers";
+import { requireManager } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
 import {
   commitImport,
@@ -83,7 +83,7 @@ function describe(plan: ImportPlan, rows: ImportRow[]) {
  * mode=commit writes it, all or nothing. Managers only (enforced by middleware).
  */
 export async function POST(request: Request): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
 
   let form: FormData;

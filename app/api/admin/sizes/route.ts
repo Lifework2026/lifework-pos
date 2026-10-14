@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +12,7 @@ const createSchema = z.object({
 
 /** GET /api/admin/sizes: the managed size list with how many variants use each size. */
 export async function GET(): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const [sizes, usage] = await Promise.all([
     prisma.size.findMany({ orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
@@ -26,7 +26,7 @@ export async function GET(): Promise<Response> {
 
 /** POST /api/admin/sizes: adds a size. Names are unique, ignoring case. */
 export async function POST(request: Request): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, createSchema);
   if ("response" in body) return body.response;

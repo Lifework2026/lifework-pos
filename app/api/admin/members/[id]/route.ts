@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 import { normalizePhone } from "@/lib/phone";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ const patchSchema = z.object({
 
 /** PATCH /api/admin/members/[id]: edits a member's name, phone or active status. */
 export async function PATCH(request: Request, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, patchSchema);
   if ("response" in body) return body.response;

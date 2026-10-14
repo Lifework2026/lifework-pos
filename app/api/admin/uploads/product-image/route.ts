@@ -1,5 +1,5 @@
 import { apiError } from "@/lib/api";
-import { requireUser } from "@/lib/api-helpers";
+import { requireManager } from "@/lib/api-helpers";
 import { detectImageType, MAX_IMAGE_BYTES } from "@/lib/image-type";
 import { getStorageConfig, StorageError, uploadProductImage } from "@/lib/storage";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * to a product afterwards, when the product form is saved. Managers only (enforced by middleware).
  */
 export async function POST(request: Request): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
 
   const config = getStorageConfig();

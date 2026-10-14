@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 import { randomStoreEan13 } from "@/lib/barcode";
 import { defaultSku, ImageBindingError, validateImageBinding } from "@/lib/catalog/sku";
 import { ensureSizes } from "@/lib/catalog/sizes";
@@ -52,7 +52,7 @@ const priceOf = (value: Prisma.Decimal | number) => new Prisma.Decimal(value).to
 
 /** PATCH /api/admin/products/[id]: edits a product and its variants. Price changes are recorded in the audit log. */
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, patchSchema);
   if ("response" in body) return body.response;
@@ -234,7 +234,7 @@ const CREATION_NOTES = new Set(["Opening stock", "Bulk import"]);
  * Anything with sales or a stock history is kept for the records, so it can only be deactivated.
  */
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
 
   let imagePath: string | null = null;

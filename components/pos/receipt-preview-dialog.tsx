@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { useI18n } from "@/lib/i18n/client";
 import type { OrderDetails } from "@/lib/pos-types";
 import { Receipt } from "@/components/pos/receipt";
+import { usePrintReceipt } from "@/components/pos/print-receipt";
 
 interface ReceiptPreviewDialogProps {
   order: OrderDetails | null;
@@ -22,32 +23,36 @@ interface ReceiptPreviewDialogProps {
  */
 export function ReceiptPreviewDialog({ order, open, onOpenChange, title, extraActions }: ReceiptPreviewDialogProps) {
   const { t } = useI18n();
+  const { print, printRoot } = usePrintReceipt();
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{title ?? t("preview.title")}</DialogTitle>
-          <DialogDescription>{order ? t("preview.subtitle", { receipt: order.receiptNo }) : t("preview.none")}</DialogDescription>
-        </DialogHeader>
+    <>
+      {printRoot}
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{title ?? t("preview.title")}</DialogTitle>
+            <DialogDescription>{order ? t("preview.subtitle", { receipt: order.receiptNo }) : t("preview.none")}</DialogDescription>
+          </DialogHeader>
 
-        {order ? (
-          <div className="receipt-preview max-h-[60vh] overflow-y-auto rounded-md bg-muted/50 p-3">
-            <Receipt order={order} />
-          </div>
-        ) : null}
+          {order ? (
+            <div className="receipt-preview max-h-[60vh] overflow-y-auto rounded-md bg-muted/50 p-3">
+              <Receipt order={order} />
+            </div>
+          ) : null}
 
-        <DialogFooter className="gap-2 sm:justify-between">
-          <div className="flex gap-2">{extraActions}</div>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              {t("common.close")}
-            </Button>
-            <Button onClick={() => window.print()} disabled={!order}>
-              <Printer className="size-4" /> {t("common.print")}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <div className="flex gap-2">{extraActions}</div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                {t("common.close")}
+              </Button>
+              <Button onClick={() => order && print(order)} disabled={!order}>
+                <Printer className="size-4" /> {t("common.print")}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

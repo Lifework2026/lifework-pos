@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { apiError } from "@/lib/api";
-import { requireUser } from "@/lib/api-helpers";
+import { requireManager } from "@/lib/api-helpers";
 import { TEMPLATE_EXAMPLE_ROWS, TEMPLATE_HEADER } from "@/lib/catalog/import";
 import { buildXlsx, toCsv } from "@/lib/tabular";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/admin/products/import/template?format=xlsx|csv: the file managers fill in for a bulk import. */
 export async function GET(request: NextRequest): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
 
   const format = request.nextUrl.searchParams.get("format") === "csv" ? "csv" : "xlsx";

@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 import { bahtToSatang } from "@/lib/pricing";
 import { promotionPatchSchema, promotionSchema } from "@/lib/promotions-schema";
 
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * The edited promotion is validated as a whole, with the same rules as creating one.
  */
 export async function PATCH(request: Request, { params }: { params: { id: string } }): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, promotionPatchSchema);
   if ("response" in body) return body.response;

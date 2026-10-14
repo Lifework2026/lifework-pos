@@ -1,20 +1,21 @@
 import type { NextRequest } from "next/server";
 import { apiError } from "@/lib/api";
-import { requireUser } from "@/lib/api-helpers";
+import { requireManager } from "@/lib/api-helpers";
 import { bangkokYmd, isYmd } from "@/lib/bangkok";
 import { PAYMENT_METHOD_LABELS } from "@/lib/payment-labels";
 import { prisma } from "@/lib/prisma";
 import { buildSummary, customRange, loadPayments, loadRefunds, loadVoids, bangkokTime, thb } from "@/lib/reports";
 import { buildXlsx, toCsv } from "@/lib/tabular";
+import { buildLedgerWhere, parseMovementType, parseStockReason } from "@/lib/ledger";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const KINDS = ["payments", "refunds", "voids", "summary", "inventory", "movements", "members"] as const;
+const KINDS = ["payments", "refunds", "voids", "summary", "inventory", "movements", "members", "shifts"] as const;
 type Kind = (typeof KINDS)[number];
 
 /** Kinds that depend on a date range. Inventory and members are snapshots of right now. */
-const RANGED: Kind[] = ["payments", "refunds", "voids", "summary", "movements"];
+const RANGED: Kind[] = ["payments", "refunds", "voids", "summary", "movements", "shifts"];
 const MOVEMENT_ROW_LIMIT = 50_000;
 
 interface Dataset {
@@ -24,7 +25,7 @@ interface Dataset {
   textColumns: number[];
 }
 
-async function buildDataset(kind: Kind, from: string, to: string): Promise<Dataset> {
+async function buildDataset(kind: Kind, from: string, to: string, params: URLSearchParams): Promise<Dataset> {
   const range = customRange(from, to);
 
   if (kind === "payments") {
@@ -97,23 +98,67 @@ async function buildDataset(kind: Kind, from: string, to: string): Promise<Datas
   }
 
   if (kind === "movements") {
+    // The same filters as the Stock Movement History page, so the file matches what is on screen.
+    const where = buildLedgerWhere({
+      from,
+      to,
+      type: parseMovementType(params.get("type")),
+      reason: parseStockReason(params.get("reason")),
+      userId: params.get("user") || undefined,
+      q: params.get("q") || undefined,
+    });
     const rows = await prisma.inventoryMovement.findMany({
-      where: { createdAt: { gte: range.start, lt: range.end } },
-      orderBy: { createdAt: "asc" },
+      where,
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take: MOVEMENT_ROW_LIMIT,
       select: {
-        createdAt: true, type: true, quantityChange: true, stockBefore: true, stockAfter: true, reference: true, note: true,
+        createdAt: true, type: true, reasonCode: true, quantityChange: true, stockBefore: true, stockAfter: true, reference: true, note: true,
         variant: { select: { sku: true, size: true, color: true, product: { select: { name: true } } } },
-        user: { select: { fullName: true } },
+        user: { select: { fullName: true, username: true } },
       },
     });
     return {
-      header: ["Date", "Time", "SKU", "Product", "Size", "Color", "Type", "Change", "Stock before", "Stock after", "Reference", "Note", "Staff"],
+      header: ["Date", "Time", "SKU", "Product", "Size", "Color", "Type", "Reason code", "Change", "Stock before", "Stock after", "Reference", "Note", "Staff", "Username"],
       rows: rows.map((m) => [
         bangkokYmd(m.createdAt), bangkokTime(m.createdAt), m.variant.sku, m.variant.product.name, m.variant.size, m.variant.color,
-        m.type, m.quantityChange, m.stockBefore, m.stockAfter, m.reference, m.note, m.user?.fullName ?? null,
+        m.type, m.reasonCode, m.quantityChange, m.stockBefore, m.stockAfter, m.reference, m.note, m.user?.fullName ?? null, m.user?.username ?? null,
       ]),
-      textColumns: [2, 10],
+      textColumns: [2, 11],
+    };
+  }
+
+  if (kind === "shifts") {
+    const shifts = await prisma.shift.findMany({
+      where: { openedAt: { gte: range.start, lt: range.end } },
+      orderBy: { openedAt: "asc" },
+      select: {
+        id: true, status: true, openedAt: true, closedAt: true, openingFloat: true, expectedCash: true, countedCash: true, variance: true,
+        closeNote: true, reviewedAt: true, reviewNote: true, summary: true,
+        user: { select: { fullName: true, username: true } },
+        closedBy: { select: { fullName: true } },
+        reviewedBy: { select: { fullName: true } },
+      },
+    });
+    return {
+      header: [
+        "Shift ID", "Cashier", "Username", "Status", "Opened date", "Opened time", "Closed date", "Closed time", "Receipts",
+        "Opening float (THB)", "Cash sales (THB)", "Cash refunds (THB)", "Cash voids (THB)", "Expected cash (THB)", "Counted cash (THB)",
+        "Over / short (THB)", "Closing note", "Closed by", "Reviewed by", "Reviewed date", "Review note",
+      ],
+      rows: shifts.map((shift) => {
+        const summary = (shift.summary ?? {}) as { orderCount?: number; voidedCount?: number; cashSales?: number; cashRefunds?: number; cashVoids?: number };
+        const baht = (satang: number | undefined) => (satang === undefined ? null : (satang / 100).toFixed(2));
+        return [
+          shift.id, shift.user.fullName, shift.user.username, shift.status, bangkokYmd(shift.openedAt), bangkokTime(shift.openedAt),
+          shift.closedAt ? bangkokYmd(shift.closedAt) : null, shift.closedAt ? bangkokTime(shift.closedAt) : null,
+          summary.orderCount === undefined ? null : summary.orderCount - (summary.voidedCount ?? 0),
+          shift.openingFloat.toFixed(2), baht(summary.cashSales), baht(summary.cashRefunds), baht(summary.cashVoids),
+          shift.expectedCash?.toFixed(2) ?? null, shift.countedCash?.toFixed(2) ?? null, shift.variance?.toFixed(2) ?? null,
+          shift.closeNote, shift.closedBy?.fullName ?? null, shift.reviewedBy?.fullName ?? null,
+          shift.reviewedAt ? bangkokYmd(shift.reviewedAt) : null, shift.reviewNote,
+        ];
+      }),
+      textColumns: [0],
     };
   }
 
@@ -141,12 +186,13 @@ async function buildDataset(kind: Kind, from: string, to: string): Promise<Datas
 /**
  * GET /api/admin/export?kind=...&format=csv|xlsx&from=YYYY-MM-DD&to=YYYY-MM-DD
  *
- * kind: payments, refunds, voids, summary, movements (date range), inventory, members (snapshot).
+ * kind: payments, refunds, voids, summary, movements, shifts (date range), inventory, members (snapshot).
+ * movements also accepts the ledger filters: type, reason, user, q.
  * Times are Bangkok time. Voided sales are excluded from payments and summary, and appear in voids.
  * CSV files carry a byte-order mark so Excel reads Thai text correctly.
  */
 export async function GET(request: NextRequest): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   if (auth.user.role === "CASHIER") return apiError(403, "FORBIDDEN", "Manager access required.");
 
@@ -167,7 +213,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   try {
-    const dataset = await buildDataset(kind as Kind, from, to);
+    const dataset = await buildDataset(kind as Kind, from, to, request.nextUrl.searchParams);
     const ranged = RANGED.includes(kind as Kind);
     const stem = `lifework-${kind}-${ranged ? from : today}${ranged && from !== to ? `_to_${to}` : ""}`;
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 import { slugify } from "@/lib/slug";
 
 export const dynamic = "force-dynamic";
@@ -13,7 +13,7 @@ const createSchema = z.object({
 
 /** GET /api/admin/categories: every category with how many products it holds. */
 export async function GET(): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const categories = await prisma.category.findMany({
     orderBy: { name: "asc" },
@@ -26,7 +26,7 @@ export async function GET(): Promise<Response> {
 
 /** POST /api/admin/categories: adds a category. Names are unique, ignoring case. */
 export async function POST(request: Request): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, createSchema);
   if ("response" in body) return body.response;

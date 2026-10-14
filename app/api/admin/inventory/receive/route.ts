@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { getCurrentSession } from "@/lib/auth/server";
+import { requireManager } from "@/lib/api-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,8 @@ const receiveSchema = z
     type: z.enum(["STOCK_IN", "ADJUSTMENT"]),
     reference: z.string().trim().max(100).optional().nullable(),
     note: z.string().trim().max(300).optional().nullable(),
+    /** Why a manual adjustment was made. Required for ADJUSTMENT. */
+    reasonCode: z.enum(["DAMAGED", "LOST", "COUNT_CORRECTION", "FOUND", "OTHER"]).optional().nullable(),
     lines: z
       .array(
         z.object({
@@ -33,8 +35,16 @@ const receiveSchema = z
       if (value.lines.some((line) => line.quantityChange === 0)) {
         ctx.addIssue({ code: "custom", message: "Adjustment quantities cannot be zero.", path: ["lines"] });
       }
-      if (!value.note || value.note.length < 3) {
-        ctx.addIssue({ code: "custom", message: "Adjustments need a reason note.", path: ["note"] });
+      if (!value.reasonCode) {
+        ctx.addIssue({ code: "custom", message: "Choose the reason for the adjustment.", path: ["reasonCode"] });
+      } else if (value.reasonCode === "OTHER" && (!value.note || value.note.length < 3)) {
+        ctx.addIssue({ code: "custom", message: "Describe the reason for the adjustment.", path: ["note"] });
+      }
+      if (value.reasonCode === "FOUND" && value.lines.some((line) => line.quantityChange < 0)) {
+        ctx.addIssue({ code: "custom", message: "Found stock must add units, not remove them.", path: ["lines"] });
+      }
+      if ((value.reasonCode === "DAMAGED" || value.reasonCode === "LOST") && value.lines.some((line) => line.quantityChange > 0)) {
+        ctx.addIssue({ code: "custom", message: "Damaged or lost stock must remove units, not add them.", path: ["lines"] });
       }
     }
   });
@@ -68,8 +78,9 @@ interface StockOutcome {
  * transaction. A negative change that would drop stock below zero rolls back the whole batch.
  */
 export async function POST(request: NextRequest): Promise<Response> {
-  const session = await getCurrentSession();
-  if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
+  const auth = await requireManager();
+  if ("response" in auth) return auth.response;
+  const session = auth.user;
 
   let payload: unknown;
   try {
@@ -154,6 +165,7 @@ export async function POST(request: NextRequest): Promise<Response> {
             stockAfter: outcome.stockAfter,
             reference: input.reference || null,
             note: input.note || null,
+            reasonCode: input.type === "ADJUSTMENT" ? input.reasonCode ?? null : null,
             userId: session.id,
           })),
         });

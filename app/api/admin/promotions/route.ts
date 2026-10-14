@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
-import { readBody, requireUser } from "@/lib/api-helpers";
+import { readBody, requireManager } from "@/lib/api-helpers";
 import { bahtToSatang } from "@/lib/pricing";
 import { promotionSchema } from "@/lib/promotions-schema";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/admin/promotions: every promotion, active first. */
 export async function GET(): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const promotions = await prisma.promotion.findMany({
     orderBy: [{ isActive: "desc" }, { endsAt: "desc" }],
@@ -19,7 +19,7 @@ export async function GET(): Promise<Response> {
 
 /** POST /api/admin/promotions: creates a promotion. Managers only (enforced by middleware). */
 export async function POST(request: Request): Promise<Response> {
-  const auth = await requireUser();
+  const auth = await requireManager();
   if ("response" in auth) return auth.response;
   const body = await readBody(request, promotionSchema);
   if ("response" in body) return body.response;

@@ -13,6 +13,7 @@ import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { MemberSummary, OrderDetails, PromotionSummary } from "@/lib/pos-types";
 import { Receipt } from "@/components/pos/receipt";
+import { usePrintReceipt } from "@/components/pos/print-receipt";
 import { CardPaymentLine, type ApprovedCard } from "@/components/pos/card-payment-line";
 import { MemberPicker } from "@/components/pos/member-picker";
 import { useCartStore, type CartItem } from "@/store/useCartStore";
@@ -42,6 +43,7 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   MEMBER_REQUIRED: "checkout.errorMemberRequired",
   POINTS_EXCEED_BALANCE: "checkout.errorPoints",
   BAG_OUT_OF_STOCK: "checkout.errorBag",
+  SHIFT_REQUIRED: "checkout.errorShift",
 };
 
 const BILL_DENOMINATIONS = [100, 500, 1000];
@@ -97,6 +99,7 @@ interface CheckoutDialogProps {
 
 export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDialogProps) {
   const { t } = useI18n();
+  const { print, printRoot } = usePrintReceipt();
   const items = useCartStore((state) => state.items);
   const manualDiscount = useCartStore((state) => state.discount);
 
@@ -201,8 +204,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
   const remainingSatang = dueSatang - appliedSatang;
   const cardPending = pendingIds.size > 0;
   const redeemValid =
-    !redeemInput ||
-    (Number.isInteger(Number(redeemInput)) && Number(redeemInput) >= 0 && Number(redeemInput) <= (member?.points ?? 0));
+    !redeemInput || (Number.isInteger(Number(redeemInput)) && Number(redeemInput) >= 0 && Number(redeemInput) <= (member?.points ?? 0));
 
   // Keep the first line equal to the amount due until the cashier edits it.
   useEffect(() => {
@@ -337,223 +339,221 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
     : null;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-        {order ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <CheckCircle2 className="size-5 text-emerald-600" />
-                {t("checkout.saleComplete")}
-              </DialogTitle>
-              <DialogDescription>
-                {t("checkout.receiptTotal", { receipt: order.receiptNo, total: formatBaht(Number(order.totalAmount)) })}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="receipt-preview max-h-[50vh] overflow-y-auto rounded-md bg-muted/50 p-3">
-              <Receipt order={order} />
-            </div>
-            <DialogFooter className="gap-2 sm:justify-between">
-              <Button variant="outline" onClick={() => window.print()}>
-                <Printer className="size-4" /> {t("checkout.printReceipt")}
-              </Button>
-              <Button onClick={finish}>{t("checkout.newSale")}</Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle>{t("checkout.title")}</DialogTitle>
-              <DialogDescription>{t("checkout.amountDue", { amount: formatBaht(dueSatang / 100) })}</DialogDescription>
-            </DialogHeader>
+    <>
+      {printRoot}
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          {order ? (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="size-5 text-emerald-600" />
+                  {t("checkout.saleComplete")}
+                </DialogTitle>
+                <DialogDescription>
+                  {t("checkout.receiptTotal", { receipt: order.receiptNo, total: formatBaht(Number(order.totalAmount)) })}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="receipt-preview max-h-[50vh] overflow-y-auto rounded-md bg-muted/50 p-3">
+                <Receipt order={order} />
+              </div>
+              <DialogFooter className="gap-2 sm:justify-between">
+                <Button variant="outline" onClick={() => print(order)}>
+                  <Printer className="size-4" /> {t("checkout.printReceipt")}
+                </Button>
+                <Button onClick={finish}>{t("checkout.newSale")}</Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{t("checkout.title")}</DialogTitle>
+                <DialogDescription>{t("checkout.amountDue", { amount: formatBaht(dueSatang / 100) })}</DialogDescription>
+              </DialogHeader>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <section className="flex min-w-0 flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">{t("checkout.member")}</span>
-                  <MemberPicker
-                    selected={member}
-                    onSelect={(next) => {
-                      setMember(next);
-                      setRedeemInput("");
-                    }}
-                    disabled={submitting}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">{t("checkout.bag")}</span>
-                  <div className="grid grid-cols-3 gap-2">
-                    {BAG_KEYS.map((option) => (
-                      <Button
-                        key={option.value}
-                        variant={bag === option.value ? "default" : "outline"}
-                        size="sm"
-                        className="h-auto min-h-9 min-w-0 whitespace-normal px-2 py-2 text-center leading-tight"
-                        onClick={() => setBag(option.value)}
-                        disabled={submitting}
-                      >
-                        {t(option.key)}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="promotion" className="text-sm font-medium">
-                    {t("checkout.promotion")}
-                  </label>
-                  <select
-                    id="promotion"
-                    value={promotionId}
-                    onChange={(event) => setPromotionId(event.target.value)}
-                    className="h-9 rounded-md border bg-background px-3 text-sm"
-                    disabled={submitting}
-                  >
-                    <option value="">{t("checkout.noPromotion")}</option>
-                    {promotions.map((promo) => (
-                      <option key={promo.id} value={promo.id}>
-                        {promo.name}
-                        {promo.kind === "PERCENT_OFF" ? ` (${Number(promo.value)}%)` : ` (-${formatBaht(Number(promo.value))})`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {member ? (
+              <div className="grid gap-6 md:grid-cols-2">
+                <section className="flex min-w-0 flex-col gap-4">
                   <div className="flex flex-col gap-2">
-                    <label htmlFor="redeem" className="text-sm font-medium">
-                      {t("checkout.redeem")}
-                    </label>
-                    <Input
-                      id="redeem"
-                      type="number"
-                      min={0}
-                      max={member.points}
-                      step={1}
-                      value={redeemInput}
-                      onChange={(event) => setRedeemInput(event.target.value)}
-                      placeholder={t("checkout.redeemUpTo", { count: member.points })}
+                    <span className="text-sm font-medium">{t("checkout.member")}</span>
+                    <MemberPicker
+                      selected={member}
+                      onSelect={(next) => {
+                        setMember(next);
+                        setRedeemInput("");
+                      }}
                       disabled={submitting}
                     />
-                    {!redeemValid ? (
-                      <p className="text-sm text-destructive">{t("checkout.pointsLimit", { count: member.points })}</p>
-                    ) : null}
                   </div>
-                ) : null}
-              </section>
 
-              <section className="flex min-w-0 flex-col gap-4">
-                <div className="rounded-md border p-3 text-sm" aria-live="polite">
-                  {items.length === 0 ? (
-                    <p className="text-muted-foreground">{t("checkout.emptyBasket")}</p>
-                  ) : problemText ? (
-                    <div className="flex flex-col gap-2">
-                      <p role="alert" className="text-destructive">
-                        {problemText}
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="self-start"
-                        onClick={() => setQuoteAttempt((n) => n + 1)}
-                        disabled={quoteLoading}
-                      >
-                        <RefreshCw className="size-4" /> {t("checkout.recalculate")}
-                      </Button>
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm font-medium">{t("checkout.bag")}</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {BAG_KEYS.map((option) => (
+                        <Button
+                          key={option.value}
+                          variant={bag === option.value ? "default" : "outline"}
+                          size="sm"
+                          className="h-auto min-h-9 min-w-0 whitespace-normal px-2 py-2 text-center leading-tight"
+                          onClick={() => setBag(option.value)}
+                          disabled={submitting}
+                        >
+                          {t(option.key)}
+                        </Button>
+                      ))}
                     </div>
-                  ) : !quote ? (
-                    <p className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="size-4 animate-spin" /> {t("checkout.pricing")}
-                    </p>
-                  ) : (
-                    <dl className="flex flex-col gap-1.5">
-                      <QuoteRow label={t("checkout.subtotal")} value={quote.totals.subtotal} />
-                      {Number(quote.totals.promotionDiscount) > 0 ? (
-                        <QuoteRow
-                          label={quote.promotionName ?? t("receipt.promotionFallback")}
-                          value={`-${quote.totals.promotionDiscount}`}
-                        />
-                      ) : null}
-                      {Number(quote.totals.memberDiscount) > 0 ? (
-                        <QuoteRow label={t("checkout.memberDiscount")} value={`-${quote.totals.memberDiscount}`} />
-                      ) : null}
-                      {Number(quote.totals.manualDiscount) > 0 ? (
-                        <QuoteRow label={t("checkout.discount")} value={`-${quote.totals.manualDiscount}`} />
-                      ) : null}
-                      {Number(quote.totals.pointsDiscount) > 0 ? (
-                        <QuoteRow label={t("checkout.pointsRedeemed")} value={`-${quote.totals.pointsDiscount}`} />
-                      ) : null}
-                      <div className="mt-1 flex justify-between border-t pt-2 text-base font-semibold">
-                        <dt>{t("checkout.totalDue")}</dt>
-                        <dd className="tabular-nums">{formatBaht(Number(quote.totals.total))}</dd>
-                      </div>
-                      {member && quote.pointsEarned > 0 ? (
-                        <p className="text-xs text-muted-foreground">{t("checkout.memberEarns", { count: quote.pointsEarned })}</p>
-                      ) : null}
-                    </dl>
-                  )}
-                </div>
-
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{t("checkout.payment")}</span>
-                    <span className={`text-sm tabular-nums ${remainingSatang === 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                      {remainingSatang === 0
-                        ? t("checkout.fullyPaid")
-                        : remainingSatang > 0
-                          ? t("checkout.remaining", { amount: formatBaht(remainingSatang / 100) })
-                          : t("checkout.overBy", { amount: formatBaht(-remainingSatang / 100) })}
-                    </span>
                   </div>
 
-                  {lines.map((line, index) => (
-                    <PaymentLine
-                      key={line.id}
-                      index={index}
-                      line={line}
-                      dueSatang={dueSatang}
-                      disabled={submitting || !!line.card}
-                      pending={pendingIds.has(line.id)}
-                      canRemove={lines.length > 1 && !line.card && !pendingIds.has(line.id)}
-                      onChange={(patch) => updateLine(line.id, patch)}
-                      onRemove={() => removeLine(line.id)}
-                      onApproved={(card) => approveCard(line.id, card)}
-                      onPendingChange={(pending) => setLinePending(line.id, pending)}
-                    />
-                  ))}
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="promotion" className="text-sm font-medium">
+                      {t("checkout.promotion")}
+                    </label>
+                    <select
+                      id="promotion"
+                      value={promotionId}
+                      onChange={(event) => setPromotionId(event.target.value)}
+                      className="h-9 rounded-md border bg-background px-3 text-sm"
+                      disabled={submitting}
+                    >
+                      <option value="">{t("checkout.noPromotion")}</option>
+                      {promotions.map((promo) => (
+                        <option key={promo.id} value={promo.id}>
+                          {promo.name}
+                          {promo.kind === "PERCENT_OFF" ? ` (${Number(promo.value)}%)` : ` (-${formatBaht(Number(promo.value))})`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={addLine}
-                    disabled={submitting || remainingSatang <= 0 || !quote}
-                  >
-                    {t("checkout.addPayment")}
-                  </Button>
-                </div>
+                  {member ? (
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="redeem" className="text-sm font-medium">
+                        {t("checkout.redeem")}
+                      </label>
+                      <Input
+                        id="redeem"
+                        type="number"
+                        min={0}
+                        max={member.points}
+                        step={1}
+                        value={redeemInput}
+                        onChange={(event) => setRedeemInput(event.target.value)}
+                        placeholder={t("checkout.redeemUpTo", { count: member.points })}
+                        disabled={submitting}
+                      />
+                      {!redeemValid ? (
+                        <p className="text-sm text-destructive">{t("checkout.pointsLimit", { count: member.points })}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
 
-                {error ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    {error}
-                  </p>
-                ) : null}
-              </section>
-            </div>
+                <section className="flex min-w-0 flex-col gap-4">
+                  <div className="rounded-md border p-3 text-sm" aria-live="polite">
+                    {items.length === 0 ? (
+                      <p className="text-muted-foreground">{t("checkout.emptyBasket")}</p>
+                    ) : problemText ? (
+                      <div className="flex flex-col gap-2">
+                        <p role="alert" className="text-destructive">
+                          {problemText}
+                        </p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="self-start"
+                          onClick={() => setQuoteAttempt((n) => n + 1)}
+                          disabled={quoteLoading}
+                        >
+                          <RefreshCw className="size-4" /> {t("checkout.recalculate")}
+                        </Button>
+                      </div>
+                    ) : !quote ? (
+                      <p className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="size-4 animate-spin" /> {t("checkout.pricing")}
+                      </p>
+                    ) : (
+                      <dl className="flex flex-col gap-1.5">
+                        <QuoteRow label={t("checkout.subtotal")} value={quote.totals.subtotal} />
+                        {Number(quote.totals.promotionDiscount) > 0 ? (
+                          <QuoteRow
+                            label={quote.promotionName ?? t("receipt.promotionFallback")}
+                            value={`-${quote.totals.promotionDiscount}`}
+                          />
+                        ) : null}
+                        {Number(quote.totals.memberDiscount) > 0 ? (
+                          <QuoteRow label={t("checkout.memberDiscount")} value={`-${quote.totals.memberDiscount}`} />
+                        ) : null}
+                        {Number(quote.totals.manualDiscount) > 0 ? (
+                          <QuoteRow label={t("checkout.discount")} value={`-${quote.totals.manualDiscount}`} />
+                        ) : null}
+                        {Number(quote.totals.pointsDiscount) > 0 ? (
+                          <QuoteRow label={t("checkout.pointsRedeemed")} value={`-${quote.totals.pointsDiscount}`} />
+                        ) : null}
+                        <div className="mt-1 flex justify-between border-t pt-2 text-base font-semibold">
+                          <dt>{t("checkout.totalDue")}</dt>
+                          <dd className="tabular-nums">{formatBaht(Number(quote.totals.total))}</dd>
+                        </div>
+                        {member && quote.pointsEarned > 0 ? (
+                          <p className="text-xs text-muted-foreground">{t("checkout.memberEarns", { count: quote.pointsEarned })}</p>
+                        ) : null}
+                      </dl>
+                    )}
+                  </div>
 
-            <DialogFooter>
-              <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting || cardPending}>
-                {t("common.cancel")}
-              </Button>
-              <Button size="lg" onClick={() => void submit()} disabled={!canSubmit}>
-                {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
-                {t("checkout.confirm")}
-              </Button>
-            </DialogFooter>
-          </>
-        )}
-      </DialogContent>
-    </Dialog>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{t("checkout.payment")}</span>
+                      <span className={`text-sm tabular-nums ${remainingSatang === 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                        {remainingSatang === 0
+                          ? t("checkout.fullyPaid")
+                          : remainingSatang > 0
+                            ? t("checkout.remaining", { amount: formatBaht(remainingSatang / 100) })
+                            : t("checkout.overBy", { amount: formatBaht(-remainingSatang / 100) })}
+                      </span>
+                    </div>
+
+                    {lines.map((line, index) => (
+                      <PaymentLine
+                        key={line.id}
+                        index={index}
+                        line={line}
+                        dueSatang={dueSatang}
+                        disabled={submitting || !!line.card}
+                        pending={pendingIds.has(line.id)}
+                        canRemove={lines.length > 1 && !line.card && !pendingIds.has(line.id)}
+                        onChange={(patch) => updateLine(line.id, patch)}
+                        onRemove={() => removeLine(line.id)}
+                        onApproved={(card) => approveCard(line.id, card)}
+                        onPendingChange={(pending) => setLinePending(line.id, pending)}
+                      />
+                    ))}
+
+                    <Button variant="outline" size="sm" onClick={addLine} disabled={submitting || remainingSatang <= 0 || !quote}>
+                      {t("checkout.addPayment")}
+                    </Button>
+                  </div>
+
+                  {error ? (
+                    <p role="alert" className="text-sm text-destructive">
+                      {error}
+                    </p>
+                  ) : null}
+                </section>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting || cardPending}>
+                  {t("common.cancel")}
+                </Button>
+                <Button size="lg" onClick={() => void submit()} disabled={!canSubmit}>
+                  {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
+                  {t("checkout.confirm")}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -596,8 +596,7 @@ function PaymentLine({
   const locked = disabled || pending;
   const amountSatang = parseSatang(line.amount) ?? 0;
   const tenderedSatang = parseSatang(line.tendered);
-  const change =
-    line.method === "CASH" && tenderedSatang !== null && tenderedSatang >= amountSatang ? tenderedSatang - amountSatang : null;
+  const change = line.method === "CASH" && tenderedSatang !== null && tenderedSatang >= amountSatang ? tenderedSatang - amountSatang : null;
 
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
@@ -672,8 +671,7 @@ function PaymentLine({
               ))}
           </div>
           <p className="text-sm">
-            {t("checkout.change")}{" "}
-            <span className="font-semibold tabular-nums">{change !== null ? formatBaht(change / 100) : "—"}</span>
+            {t("checkout.change")} <span className="font-semibold tabular-nums">{change !== null ? formatBaht(change / 100) : "—"}</span>
           </p>
         </>
       ) : null}
