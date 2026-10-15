@@ -5,7 +5,7 @@
  */
 
 export const CODE_PATTERN = /^[A-Z0-9][A-Z0-9-]{1,19}$/;
-export const CODE_RULE_MESSAGE = "Code must be 2 to 20 letters or digits, for example 01 or BK. Keep the leading zero, such as 01.";
+export const CODE_RULE_MESSAGE = "Code must be 2 to 20 letters or digits, for example 00 or BK. Keep the leading zero, such as 00.";
 
 export function normalizeCode(value: string): string {
   return value.trim().toUpperCase();

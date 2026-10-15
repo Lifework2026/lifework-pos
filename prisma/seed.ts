@@ -10,6 +10,7 @@
 import { PrismaClient, Role } from "@prisma/client";
 import { hashPassword } from "../lib/auth/password";
 import { ean13 } from "../lib/barcode";
+import { MATRIX_CATEGORIES, MATRIX_COLORS } from "../lib/catalog-matrix";
 
 const prisma = new PrismaClient();
 
@@ -41,7 +42,7 @@ const DEMO_CATALOG = [
   {
     name: "Shirts",
     slug: "shirts",
-    code: "CAT-SHIRT",
+    code: "SH",
     products: [
       {
         name: "Classic Oxford Shirt",
@@ -49,12 +50,12 @@ const DEMO_CATALOG = [
         brand: "Lifework",
         description: "Everyday cotton oxford shirt with a regular fit.",
         variants: [
-          { size: "S", color: "White", colorCode: "WHT", price: 890, stockQuantity: 12 },
-          { size: "M", color: "White", colorCode: "WHT", price: 890, stockQuantity: 20 },
-          { size: "L", color: "White", colorCode: "WHT", price: 890, stockQuantity: 15 },
-          { size: "S", color: "Blue", colorCode: "BLU", price: 890, stockQuantity: 8 },
-          { size: "M", color: "Blue", colorCode: "BLU", price: 890, stockQuantity: 18 },
-          { size: "L", color: "Blue", colorCode: "BLU", price: 890, stockQuantity: 10 },
+          { size: "S", color: "White", colorCode: "WH", price: 890, stockQuantity: 12 },
+          { size: "M", color: "White", colorCode: "WH", price: 890, stockQuantity: 20 },
+          { size: "L", color: "White", colorCode: "WH", price: 890, stockQuantity: 15 },
+          { size: "S", color: "Blue", colorCode: "BL", price: 890, stockQuantity: 8 },
+          { size: "M", color: "Blue", colorCode: "BL", price: 890, stockQuantity: 18 },
+          { size: "L", color: "Blue", colorCode: "BL", price: 890, stockQuantity: 10 },
         ],
       },
       {
@@ -63,9 +64,9 @@ const DEMO_CATALOG = [
         brand: "Lifework",
         description: "Breathable linen shirt for warm weather.",
         variants: [
-          { size: "M", color: "Sand", colorCode: "SND", price: 1190, stockQuantity: 9 },
-          { size: "L", color: "Sand", colorCode: "SND", price: 1190, stockQuantity: 7 },
-          { size: "M", color: "Olive", colorCode: "OLV", price: 1190, stockQuantity: 5 },
+          { size: "M", color: "Sand", colorCode: "SD", price: 1190, stockQuantity: 9 },
+          { size: "L", color: "Sand", colorCode: "SD", price: 1190, stockQuantity: 7 },
+          { size: "M", color: "Olive", colorCode: "OL", price: 1190, stockQuantity: 5 },
         ],
       },
     ],
@@ -73,7 +74,7 @@ const DEMO_CATALOG = [
   {
     name: "Pants",
     slug: "pants",
-    code: "CAT-PANT",
+    code: "PN",
     products: [
       {
         name: "Slim Chino Pants",
@@ -81,12 +82,12 @@ const DEMO_CATALOG = [
         brand: "Lifework",
         description: "Stretch cotton chinos with a tapered slim fit.",
         variants: [
-          { size: "28", color: "Khaki", colorCode: "KHK", price: 1290, stockQuantity: 6 },
-          { size: "30", color: "Khaki", colorCode: "KHK", price: 1290, stockQuantity: 11 },
-          { size: "32", color: "Khaki", colorCode: "KHK", price: 1290, stockQuantity: 9 },
-          { size: "28", color: "Black", colorCode: "BLK", price: 1290, stockQuantity: 4 },
-          { size: "30", color: "Black", colorCode: "BLK", price: 1290, stockQuantity: 13 },
-          { size: "32", color: "Black", colorCode: "BLK", price: 1290, stockQuantity: 8 },
+          { size: "28", color: "Khaki", colorCode: "KH", price: 1290, stockQuantity: 6 },
+          { size: "30", color: "Khaki", colorCode: "KH", price: 1290, stockQuantity: 11 },
+          { size: "32", color: "Khaki", colorCode: "KH", price: 1290, stockQuantity: 9 },
+          { size: "28", color: "Black", colorCode: "BK", price: 1290, stockQuantity: 4 },
+          { size: "30", color: "Black", colorCode: "BK", price: 1290, stockQuantity: 13 },
+          { size: "32", color: "Black", colorCode: "BK", price: 1290, stockQuantity: 8 },
         ],
       },
       {
@@ -95,9 +96,9 @@ const DEMO_CATALOG = [
         brand: "Lifework",
         description: "High-rise wide-leg jeans in mid-wash denim.",
         variants: [
-          { size: "26", color: "Indigo", colorCode: "IND", price: 1490, stockQuantity: 3 },
-          { size: "28", color: "Indigo", colorCode: "IND", price: 1490, stockQuantity: 7 },
-          { size: "30", color: "Indigo", colorCode: "IND", price: 1490, stockQuantity: 5 },
+          { size: "26", color: "Indigo", colorCode: "IN", price: 1490, stockQuantity: 3 },
+          { size: "28", color: "Indigo", colorCode: "IN", price: 1490, stockQuantity: 7 },
+          { size: "30", color: "Indigo", colorCode: "IN", price: 1490, stockQuantity: 5 },
         ],
       },
     ],
@@ -146,25 +147,21 @@ async function fillThaiNames(): Promise<void> {
 }
 
 /** Starting colours with catalog codes. Created once; rename or add more in Back-Office > Colours. */
-const DEFAULT_COLORS = [
-  { code: "COL-STD", name: "Standard", nameTh: "มาตรฐาน" },
-  { code: "COL-WHT", name: "White", nameTh: "ขาว" },
-  { code: "COL-BLK", name: "Black", nameTh: "ดำ" },
-  { code: "COL-BLU", name: "Blue", nameTh: "น้ำเงิน" },
-  { code: "COL-RED", name: "Red", nameTh: "แดง" },
-  { code: "COL-KHK", name: "Khaki", nameTh: "กากี" },
-  { code: "COL-SND", name: "Sand", nameTh: "ทราย" },
-  { code: "COL-OLV", name: "Olive", nameTh: "เขียวมะกอก" },
-  { code: "COL-IND", name: "Indigo", nameTh: "คราม" },
-];
+const DEFAULT_COLORS = MATRIX_COLORS;
 
 async function seedDefaultColors(): Promise<void> {
   for (let index = 0; index < DEFAULT_COLORS.length; index += 1) {
     const color = DEFAULT_COLORS[index];
-    await prisma.color.upsert({
-      where: { code: color.code },
-      update: {},
-      create: { code: color.code, name: color.name, nameTh: color.nameTh, sortOrder: index + 1 },
+    const byCode = await prisma.color.findUnique({ where: { code: color.code }, select: { id: true } });
+    if (byCode) continue;
+    // Names are unique too. A legacy colour already called White stays as it is, so re-running the seed is safe.
+    const byName = await prisma.color.findUnique({ where: { name: color.name }, select: { id: true } });
+    if (byName) {
+      console.log(`Colour name ${color.name} already exists under another code. Kept.`);
+      continue;
+    }
+    await prisma.color.create({
+      data: { code: color.code, name: color.name, nameTh: color.nameTh, sortOrder: index + 1 },
     });
   }
 }
@@ -173,7 +170,7 @@ async function seedBags(): Promise<void> {
   const category = await prisma.category.upsert({
     where: { slug: "supplies" },
     update: {},
-    create: { name: "Supplies", slug: "supplies", code: "CAT-SUP" },
+    create: { name: "Supplies", slug: "supplies", code: "SP" },
   });
   await fillThaiNames();
   const product = await prisma.product.upsert({
@@ -196,7 +193,7 @@ async function seedBags(): Promise<void> {
         productId: product.id,
         size: bag.size,
         color: "Standard",
-        colorId: (await prisma.color.findUniqueOrThrow({ where: { code: "COL-STD" }, select: { id: true } })).id,
+        colorId: (await prisma.color.findUniqueOrThrow({ where: { code: "ST" }, select: { id: true } })).id,
         sku: bag.sku,
         barcode: bag.barcode,
         price: bag.price,
@@ -262,14 +259,8 @@ async function seedDemoCatalog(): Promise<number> {
   return created;
 }
 
-/** Starting categories for a fashion store. Created once; rename or add more in Back-Office > Categories & sizes. */
-const DEFAULT_CATEGORIES = [
-  { name: "Shirts", nameTh: "เสื้อ", slug: "shirts", code: "CAT-SHIRT" },
-  { name: "Pants", nameTh: "กางเกง", slug: "pants", code: "CAT-PANT" },
-  { name: "Dresses", nameTh: "เดรส", slug: "dresses", code: "CAT-DRESS" },
-  { name: "Outerwear", nameTh: "เสื้อคลุม", slug: "outerwear", code: "CAT-OUTER" },
-  { name: "Accessories", nameTh: "เครื่องประดับ", slug: "accessories", code: "CAT-ACC" },
-];
+/** Starting Catalog IDs from the SKU matrix (00 Short-Sleeved T-Shirt, SP Supplies). Created once; add more in Back-Office > Master data. */
+const DEFAULT_CATEGORIES = MATRIX_CATEGORIES.map((c) => ({ name: c.name, nameTh: c.nameTh, slug: c.slug, code: c.code }));
 
 async function seedDefaultCategories(): Promise<void> {
   for (const category of DEFAULT_CATEGORIES) {

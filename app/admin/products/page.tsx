@@ -40,7 +40,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       : {}),
   };
 
-  const [products, total, categories] = await Promise.all([
+  const [products, total, categories, colorCount] = await Promise.all([
     prisma.product.findMany({
       where,
       orderBy: { name: "asc" },
@@ -69,6 +69,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     }),
     prisma.product.count({ where }),
     prisma.category.findMany({ select: { id: true, name: true, nameTh: true }, orderBy: { name: "asc" } }),
+    prisma.color.count(),
   ]);
 
   const field = "h-9 rounded-md border bg-background px-3 text-sm";
@@ -89,6 +90,12 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         </div>
       </div>
 
+      {categories.length === 0 || colorCount === 0 ? (
+        <Link href="/admin/master-data" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          {t("products.setupNeeded")}
+          <span className="underline">{t("nav.masterData")}</span>
+        </Link>
+      ) : null}
       <form className="grid gap-3 rounded-xl border bg-background p-4 md:grid-cols-[1fr_200px_160px_auto] md:items-end">
         <label className="flex flex-col gap-1 text-sm">
           <span className="text-muted-foreground">{t("pos.searchLabel")}</span>

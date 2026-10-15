@@ -159,7 +159,7 @@ async function parseWorkbook(rows: (string | number)[][]) {
     const example = TEMPLATES.A.example(MASTER);
     assert.equal(example[4], "01");
     assert.equal(example[5], "BK");
-    assert.equal(TEMPLATES.D.example(MASTER)[0], "01");
+    assert.equal(TEMPLATES.D.example(MASTER)[0], "00");
     assert.equal(TEMPLATES.E.example(MASTER)[0], "BK");
   });
 
