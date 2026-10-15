@@ -6,11 +6,13 @@ import {
   commitImport,
   parseImportTable,
   planImport,
+  TEMPLATE_HEADER,
   type ImportIssue,
   type ImportOptions,
   type ImportPlan,
   type ImportRow,
 } from "@/lib/catalog/import";
+import { buildProductPreview, describeColumns } from "@/lib/catalog/import-preview";
 import { readUploadedTable } from "@/lib/upload";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +23,13 @@ const ISSUE_LIMIT = 200;
 class ImportBlocked extends Error {
   constructor(public readonly issues: ImportIssue[]) {
     super("The file has problems.");
+  }
+}
+
+/** The commit found a different number of new rows from the check the user reviewed. Nothing is written. */
+class PreviewChanged extends Error {
+  constructor() {
+    super("The catalogue changed after the check.");
   }
 }
 
@@ -43,11 +52,35 @@ function describe(plan: ImportPlan, rows: ImportRow[]) {
   };
 }
 
+/** Reads the master names the preview shows next to each code. Read only. */
+async function previewFor(table: string[][], rows: ImportRow[], plan: ImportPlan) {
+  const described = describeColumns(table, TEMPLATE_HEADER);
+  const [categories, colors] = await Promise.all([
+    prisma.category.findMany({
+      where: { code: { in: Array.from(new Set(rows.map((row) => row.categoryCode))) } },
+      select: { code: true, name: true, nameTh: true },
+    }),
+    prisma.color.findMany({
+      where: { code: { in: Array.from(new Set(rows.map((row) => row.colorCode))) } },
+      select: { code: true, name: true, nameTh: true },
+    }),
+  ]);
+  return buildProductPreview({
+    rows,
+    plan,
+    headers: described.headers,
+    missingColumns: described.missingColumns,
+    categories,
+    colors,
+  });
+}
+
 /**
- * POST /api/admin/products/import (multipart: file, mode, onExisting, applyStock)
+ * POST /api/admin/products/import (multipart: file, mode, onExisting, applyStock, expectedNewVariants)
  *
- * mode=preview checks the file and reports what would happen, without writing anything.
- * mode=commit writes it, all or nothing. Managers only (enforced by middleware).
+ * mode=preview checks the file and returns what would happen plus the rows for the visual preview. Nothing is written.
+ * mode=commit writes it, all or nothing. When expectedNewVariants is sent, the commit writes only if the database still
+ * matches the check the user reviewed; otherwise the transaction rolls back. Managers only (enforced by middleware).
  */
 export async function POST(request: Request): Promise<Response> {
   const auth = await requireManager();
@@ -67,6 +100,8 @@ export async function POST(request: Request): Promise<Response> {
     onExisting: form.get("onExisting") === "update" ? "update" : "skip",
     applyStock: form.get("applyStock") === "true",
   };
+  const expectedRaw = form.get("expectedNewVariants");
+  const expectedNew = typeof expectedRaw === "string" && expectedRaw.trim() !== "" ? Number(expectedRaw) : null;
 
   const read = await readUploadedTable(file);
   if ("response" in read) return read.response;
@@ -91,6 +126,7 @@ export async function POST(request: Request): Promise<Response> {
         issues: plan.issues.slice(0, ISSUE_LIMIT),
         unknownColumns: parsed.unknownColumns,
         ...describe(plan, parsed.rows),
+        preview: await previewFor(read.table, parsed.rows, plan),
       });
     }
 
@@ -99,6 +135,7 @@ export async function POST(request: Request): Promise<Response> {
         // Plan again inside the transaction, so the write matches the database at this moment.
         const plan = await planImport(tx, parsed.rows, options);
         if (plan.issues.length > 0) throw new ImportBlocked(plan.issues);
+        if (expectedNew !== null && expectedNew !== plan.summary.newVariants) throw new PreviewChanged();
         await commitImport(tx, plan, auth.user.id, file.name);
         return plan.summary;
       },
@@ -110,6 +147,12 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json(
         { error: "IMPORT_HAS_ISSUES", message: "The data changed while importing. Review the problems and try again.", ok: false, issueCount: err.issues.length, issues: err.issues.slice(0, ISSUE_LIMIT) },
         { status: 422 },
+      );
+    }
+    if (err instanceof PreviewChanged) {
+      return Response.json(
+        { error: "PREVIEW_CHANGED", message: "The catalogue changed after the check. Nothing was imported. Check the file again.", ok: false },
+        { status: 409 },
       );
     }
     if (err instanceof Prisma.PrismaClientKnownRequestError && (err.code === "P2002" || err.code === "P2034")) {
