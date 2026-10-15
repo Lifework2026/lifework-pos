@@ -3,6 +3,7 @@
 import { useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { useOnline } from "@/components/network-status";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ export function RefundDialog({ order, open, onOpenChange }: RefundDialogProps) {
   const [references, setReferences] = useState<Record<string, string>>({});
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const online = useOnline();
   // A ref, not state, so two taps in the same frame cannot both submit.
   const submitLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +84,7 @@ export function RefundDialog({ order, open, onOpenChange }: RefundDialogProps) {
 
   const channelsNeedingReference = Array.from(new Set((slices ?? []).map((s) => s.method).filter((m) => m !== "CASH")));
   const referencesOk = channelsNeedingReference.every((method) => (references[method] ?? "").trim().length >= 3);
-  const canSubmit = hasSelection && !anyInvalid && slices !== null && reason.trim().length >= 3 && referencesOk && !submitting;
+  const canSubmit = online && hasSelection && !anyInvalid && slices !== null && reason.trim().length >= 3 && referencesOk && !submitting;
 
   async function submit(): Promise<void> {
     if (submitLock.current) return;

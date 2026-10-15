@@ -2,6 +2,7 @@
 
 import { PauseCircle, ShoppingCart } from "lucide-react";
 import { CartLine } from "@/components/pos/cart-line";
+import { useOnline } from "@/components/network-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ interface CartPanelProps {
 
 export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }: CartPanelProps) {
   const { t } = useI18n();
+  const online = useOnline();
   const items = useCartStore((state) => state.items);
   const discount = useCartStore((state) => state.discount);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
@@ -104,7 +106,7 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
             <span className="text-base font-medium">{t("pos.total")}</span>
             <span className="text-2xl font-bold tabular-nums">{formatBaht(total)}</span>
           </div>
-          <Button size="lg" className="h-12 text-base" disabled={!canCheckout} onClick={onCheckout}>
+          <Button size="lg" className="h-12 text-base" disabled={!canCheckout || !online} onClick={onCheckout}>
             {t("pos.checkout")}
           </Button>
         </div>

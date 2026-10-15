@@ -110,6 +110,26 @@ The Print button renders the receipt into a separate `#print-root` element and t
 2. In the browser's print dialog choose that printer, scale 100%, margins none, and turn off headers and footers. The page already asks for no margin.
 3. For one-click printing, start Chrome or Edge with `--kiosk-printing` so the dialog is skipped.
 
+## Tax invoices (ใบกำกับภาษีเต็มรูป)
+
+Managers issue a full tax invoice from **Sales → detail → ใบกำกับภาษี**. The buyer's name, branch (00000 for head office or a 5-digit branch number), address and 13-digit tax ID are required, and the tax ID's check digit is verified before sending. Each sale gets one invoice, numbered `TI-YYYYMM-NNNNN` (restarts each month), and the invoice is printed on A4 with the VAT split out of the VAT-inclusive total. Voided sales cannot be invoiced.
+
+Set the company's own details on the host before issuing (they are printed on every invoice and are not stored in the repository):
+
+- `STORE_LEGAL_NAME`, `STORE_TAX_ID` (13 digits), `STORE_BRANCH_NO` (default `00000`), `STORE_ADDRESS`
+
+Issuing is refused until these are set. Refunds after an invoice is issued need a credit note (ใบลดหนี้), which this version does not produce.
+
+**VAT assumption:** shelf prices are treated as VAT-inclusive at 7%, so VAT = total × 7 / 107. The accountant must confirm this before the figures are filed.
+
+## Daily close (EOD / Z-report)
+
+**Daily close (EOD)** (managers) shows, for one store day: net sales, VAT, cash and card totals, other channels, refunds, voids, tax invoices issued, and the over/short total across the day's closed shifts. It warns while any shift is still open and marks the day ready to file only when every shift is closed. **Export (Excel / CSV)** produces the summary and a row per shift for the accounting department.
+
+## Offline guard
+
+A red banner (`No Internet Connection - System Paused`) appears when the browser loses its connection. Payment, cart checkout, void, refund, tax invoice and shift buttons are disabled until it returns, so no transaction starts that would only time out.
+
 ## Roles and access
 
 | | Cashier | Manager / Admin |

@@ -71,4 +71,41 @@ test("the phone prefix index is declared in the schema and in a migration", () =
   assert.ok(migration.includes('CREATE INDEX "Member_phone_idx" ON "Member"("phone" text_pattern_ops);'));
 });
 
+test("tax invoices are issued by managers only, and the route refuses without seller details", () => {
+  const source = read("app/api/admin/orders/[id]/tax-invoice/route.ts");
+  assert.ok(source.includes("await requireManager()"), "tax invoice route must require a manager");
+  assert.ok(source.includes("getSellerInfo()"), "tax invoice route must check the seller details first");
+  assert.ok(source.includes("TransactionIsolationLevel.Serializable"), "numbering must be serializable");
+});
+
+test("the end-of-day report and its export are manager-only", () => {
+  assert.ok(read("app/api/admin/export/route.ts").includes("await requireManager()"));
+  const page = read("app/admin/eod/page.tsx");
+  assert.ok(page.includes("buildEod(date)"), "the EOD page reads the database through buildEod");
+  assert.ok(read("middleware.ts").includes('pathname.startsWith("/admin")'), "/admin is guarded by the middleware");
+});
+
+test("every payment, void, refund and shift button is disabled while offline", () => {
+  assert.ok(read("components/pos/checkout-dialog.tsx").includes("online &&"), "pay");
+  assert.ok(read("components/pos/cart-panel.tsx").includes("!online"), "cart checkout");
+  assert.ok(read("components/admin/void-dialog.tsx").includes("!online"), "void");
+  assert.ok(read("components/admin/refund-dialog.tsx").includes("online && hasSelection"), "refund");
+  const shift = read("components/pos/shift-manager.tsx");
+  assert.ok(shift.includes("busy || !online"), "shift open and close");
+  assert.ok(read("components/admin/orders-table.tsx").includes("disabled={!online}"), "sales actions");
+  assert.ok(read("components/admin/tax-invoice-dialog.tsx").includes("!online"), "tax invoice");
+});
+
+test("the offline banner is mounted for every page", () => {
+  assert.ok(read("app/layout.tsx").includes("<NetworkProvider>"));
+  assert.ok(read("components/network-status.tsx").includes("No Internet Connection - System Paused"));
+});
+
+test("printing tax invoices uses the A4 page and the receipt roll rule is gone", () => {
+  const css = read("app/globals.css");
+  assert.ok(css.includes("@page a4-document"), "A4 page rule");
+  assert.ok(!css.includes("size: 80mm auto"), "the invalid receipt page rule must stay removed");
+  assert.ok(read("components/pos/print-receipt.tsx").includes('"a4"'));
+});
+
 console.log(`\n${passed} security guard groups passed`);

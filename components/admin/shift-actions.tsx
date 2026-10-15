@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useOnline } from "@/components/network-status";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ export function ShiftActions({ shiftId, mode }: ShiftActionsProps) {
   const [counted, setCounted] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const online = useOnline();
   const [error, setError] = useState<string | null>(null);
 
   async function submit(): Promise<void> {
@@ -70,7 +72,7 @@ export function ShiftActions({ shiftId, mode }: ShiftActionsProps) {
           {error}
         </p>
       ) : null}
-      <Button onClick={() => void submit()} disabled={busy} className="self-start">
+      <Button onClick={() => void submit()} disabled={busy || !online} className="self-start">
         {busy ? <Loader2 className="size-4 animate-spin" /> : null}
         {mode === "close" ? t("shifts.closeShift") : t("shifts.markReviewed")}
       </Button>

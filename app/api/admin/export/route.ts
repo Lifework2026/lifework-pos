@@ -7,15 +7,16 @@ import { prisma } from "@/lib/prisma";
 import { buildSummary, customRange, loadPayments, loadRefunds, loadVoids, bangkokTime, thb } from "@/lib/reports";
 import { buildXlsx, toCsv } from "@/lib/tabular";
 import { buildLedgerWhere, parseMovementType, parseStockReason } from "@/lib/ledger";
+import { buildEod, eodExport } from "@/lib/eod";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const KINDS = ["payments", "refunds", "voids", "summary", "inventory", "movements", "members", "shifts"] as const;
+const KINDS = ["payments", "refunds", "voids", "summary", "inventory", "movements", "members", "shifts", "eod"] as const;
 type Kind = (typeof KINDS)[number];
 
 /** Kinds that depend on a date range. Inventory and members are snapshots of right now. */
-const RANGED: Kind[] = ["payments", "refunds", "voids", "summary", "movements", "shifts"];
+const RANGED: Kind[] = ["payments", "refunds", "voids", "summary", "movements", "shifts", "eod"];
 const MOVEMENT_ROW_LIMIT = 50_000;
 
 interface Dataset {
@@ -26,6 +27,10 @@ interface Dataset {
 }
 
 async function buildDataset(kind: Kind, from: string, to: string, params: URLSearchParams): Promise<Dataset> {
+  if (kind === "eod") {
+    // Z-report for one day, so only the start date is used.
+    return eodExport(await buildEod(from));
+  }
   const range = customRange(from, to);
 
   if (kind === "payments") {

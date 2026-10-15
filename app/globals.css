@@ -262,6 +262,25 @@
     page-break-inside: avoid;
   }
 
+  /* Full tax invoice: A4 page with a normal margin, instead of the 80mm receipt roll. */
+  @page a4-document {
+    size: A4;
+    margin: 12mm;
+  }
+
+  html.printing-a4,
+  html.printing-a4 body {
+    width: auto !important;
+  }
+
+  html.printing-a4 #print-root {
+    width: auto;
+    padding: 0;
+    page: a4-document;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

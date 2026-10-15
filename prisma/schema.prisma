@@ -278,6 +278,14 @@ model Order {
   voidReason String?
   voidedAt   DateTime?
   voidedById String?
+  /// Full tax invoice (ใบกำกับภาษีเต็มรูป). Issued at most once per order. Customer details are stored as printed.
+  taxInvoiceNo       String?   @unique
+  taxInvoiceAt       DateTime?
+  taxCustomerName    String?
+  /// "00000" for head office, otherwise the branch number.
+  taxCustomerBranch  String?
+  taxCustomerAddress String?
+  taxCustomerTaxId   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

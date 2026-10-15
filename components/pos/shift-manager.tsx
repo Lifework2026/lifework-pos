@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/toast";
+import { useOnline } from "@/components/network-status";
 import { formatBaht } from "@/lib/format";
 import { requestJson } from "@/lib/http";
 import { useI18n } from "@/lib/i18n/client";
@@ -47,6 +48,7 @@ interface ShiftManagerProps {
 export function ShiftManager({ onOpenChange, cartHasItems, salesVersion, signOutRequested, onSignOutRequestHandled }: ShiftManagerProps) {
   // One lock for open and close: a second tap while a request is in flight does nothing.
   const busyRef = useRef(false);
+  const online = useOnline();
   const { t, locale } = useI18n();
   const router = useRouter();
   const [shift, setShift] = useState<OpenShift | null>(null);
@@ -188,7 +190,7 @@ export function ShiftManager({ onOpenChange, cartHasItems, salesVersion, signOut
             <Wallet className="size-3.5 text-emerald-600" />
             {t("shift.badge", { time: time(shift.openedAt), count: shift.orderCount })}
           </span>
-          <Button variant="outline" size="sm" onClick={() => { setError(null); setClosing(true); }}>
+          <Button variant="outline" size="sm" disabled={!online} onClick={() => { setError(null); setClosing(true); }}>
             <Banknote className="size-4" />
             {t("shift.close")}
           </Button>
@@ -257,7 +259,7 @@ export function ShiftManager({ onOpenChange, cartHasItems, salesVersion, signOut
               <LogOut className="size-4" />
               {t("common.signOut")}
             </Button>
-            <Button onClick={() => void openShift()} disabled={busy} className="h-10">
+            <Button onClick={() => void openShift()} disabled={busy || !online} className="h-10">
               {busy ? <Loader2 className="size-4 animate-spin" /> : null}
               {t("shiftOpen.submit")}
             </Button>
@@ -305,7 +307,7 @@ export function ShiftManager({ onOpenChange, cartHasItems, salesVersion, signOut
             <Button variant="outline" onClick={() => setClosing(false)} disabled={busy}>
               {t("common.cancel")}
             </Button>
-            <Button onClick={() => void closeShift()} disabled={busy}>
+            <Button onClick={() => void closeShift()} disabled={busy || !online}>
               {busy ? <Loader2 className="size-4 animate-spin" /> : null}
               {t("shiftClose.submit")}
             </Button>

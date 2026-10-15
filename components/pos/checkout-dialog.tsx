@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useOnline } from "@/components/network-status";
 import { CheckCircle2, Loader2, Printer, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -229,7 +230,10 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
     return true;
   }
 
+  // Pay is disabled while offline, so a sale is never started that the terminal or server cannot finish.
+  const online = useOnline();
   const canSubmit =
+    online &&
     !!quote &&
     !quoteLoading &&
     !pricingProblem &&

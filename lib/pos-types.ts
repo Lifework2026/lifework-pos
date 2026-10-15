@@ -95,6 +95,19 @@ export interface OrderDetails {
   voidedAt: string | null;
   payments: PaymentDetails[];
   items: OrderItemDetails[];
+  taxInvoice: TaxInvoiceDetails | null;
+}
+
+/** A full tax invoice as printed. Amounts are VAT-inclusive totals split into the VAT and the net value. */
+export interface TaxInvoiceDetails {
+  number: string;
+  issuedAt: string;
+  seller: { name: string; taxId: string; branch: string; address: string };
+  customer: { name: string; branch: string; address: string; taxId: string };
+  totalInclVat: string;
+  valueExVat: string;
+  vat: string;
+  vatPercent: number;
 }
 
 export interface ApiErrorBody {

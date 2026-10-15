@@ -75,6 +75,16 @@ if (storageMissing.length === 0) {
   (strict ? problems : warnings).push(`Photo upload is disabled: ${storageMissing.join(" and ")} not set.`);
 }
 
+// Seller details printed on full tax invoices. Tax invoices are refused until they are set.
+const sellerMissing = ["STORE_LEGAL_NAME", "STORE_TAX_ID", "STORE_ADDRESS"].filter((key) => !env[key]);
+if (sellerMissing.length > 0) {
+  warnings.push(`Tax invoices are disabled until these are set: ${sellerMissing.join(", ")}.`);
+} else if (!/^\d{13}$/.test(env.STORE_TAX_ID.trim())) {
+  problems.push("STORE_TAX_ID must be the 13-digit tax ID of the company.");
+} else {
+  ok.push("Tax invoice seller details are set.");
+}
+
 // Seed passwords: needed only the first time an account is created
 for (const key of ["ADMIN_PASSWORD", "CASHIER_PASSWORD"]) {
   if (env[key] && env[key].length < 10) warnings.push(`${key} is shorter than 10 characters.`);

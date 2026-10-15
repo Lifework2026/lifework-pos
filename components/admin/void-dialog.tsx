@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { useOnline } from "@/components/network-status";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const online = useOnline();
   // A ref, not state, so two taps in the same frame cannot both submit.
   const submitLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +93,7 @@ export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
             {t("void.keep")}
           </Button>
-          <Button variant="destructive" onClick={submit} disabled={submitting || reason.trim().length < 3}>
+          <Button variant="destructive" onClick={submit} disabled={submitting || !online || reason.trim().length < 3}>
             {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
             {t("void.confirm")}
           </Button>

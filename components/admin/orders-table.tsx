@@ -12,6 +12,8 @@ import type { OrderDetails } from "@/lib/pos-types";
 import { ReceiptPreviewDialog } from "@/components/pos/receipt-preview-dialog";
 import { RefundDialog } from "@/components/admin/refund-dialog";
 import { VoidDialog } from "@/components/admin/void-dialog";
+import { TaxInvoiceDialog } from "@/components/admin/tax-invoice-dialog";
+import { useOnline } from "@/components/network-status";
 
 const STATUS_STYLES: Record<string, { key: MessageKey; className: string }> = {
   COMPLETED: { key: "sales.statusCompleted", className: "bg-emerald-100 text-emerald-800" },
@@ -31,6 +33,8 @@ export function OrdersTable({ orders }: OrdersTableProps) {
   const [receipt, setReceipt] = useState<OrderDetails | null>(null);
   const [refunding, setRefunding] = useState<OrderDetails | null>(null);
   const [voiding, setVoiding] = useState<OrderDetails | null>(null);
+  const [taxFor, setTaxFor] = useState<OrderDetails | null>(null);
+  const online = useOnline();
 
   if (orders.length === 0) {
     return (
@@ -84,12 +88,12 @@ export function OrdersTable({ orders }: OrdersTableProps) {
                         {t("sales.receipt")}
                       </Button>
                       {canRefund ? (
-                        <Button variant="outline" size="sm" onClick={() => setRefunding(order)}>
+                        <Button variant="outline" size="sm" disabled={!online} onClick={() => setRefunding(order)}>
                           {t("sales.refund")}
                         </Button>
                       ) : null}
                       {canVoid ? (
-                        <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setVoiding(order)}>
+                        <Button variant="ghost" size="sm" className="text-destructive" disabled={!online} onClick={() => setVoiding(order)}>
                           {t("sales.void")}
                         </Button>
                       ) : null}
@@ -194,6 +198,11 @@ export function OrdersTable({ orders }: OrdersTableProps) {
               </div>
 
               <DialogFooter className="gap-2 sm:justify-between">
+                {detail.status !== "VOIDED" ? (
+                  <Button variant="outline" disabled={!online} onClick={() => setTaxFor(detail)}>
+                    {detail.taxInvoice ? t("tax.viewTax") : t("tax.open")}
+                  </Button>
+                ) : null}
                 <Button variant="outline" onClick={() => setReceipt(detail)}>
                   {t("sales.receiptPreview")}
                 </Button>
@@ -203,6 +212,18 @@ export function OrdersTable({ orders }: OrdersTableProps) {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {taxFor ? (
+        <TaxInvoiceDialog
+          order={taxFor}
+          open
+          onOpenChange={(open) => !open && setTaxFor(null)}
+          onIssued={(updated) => {
+            setDetail(updated);
+            setTaxFor(updated);
+          }}
+        />
+      ) : null}
 
       <ReceiptPreviewDialog order={receipt} open={receipt !== null} onOpenChange={(open) => !open && setReceipt(null)} />
 

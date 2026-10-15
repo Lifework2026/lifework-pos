@@ -1,6 +1,8 @@
 import { Prisma } from "@prisma/client";
 import { formatMoney } from "@/lib/api";
 import { STORE } from "@/lib/store-config";
+import { getSellerInfo } from "@/lib/tax-seller";
+import { VAT_PERCENT, vatFromInclusiveSatang } from "@/lib/tax-rules";
 import type { OrderDetails } from "@/lib/pos-types";
 
 /** Query shape shared by checkout, reprints, the sales log and returns. */
@@ -21,6 +23,12 @@ export const orderSelect = {
   voidReason: true,
   voidedAt: true,
   createdAt: true,
+  taxInvoiceNo: true,
+  taxInvoiceAt: true,
+  taxCustomerName: true,
+  taxCustomerBranch: true,
+  taxCustomerAddress: true,
+  taxCustomerTaxId: true,
   cashier: { select: { id: true, fullName: true } },
   member: { select: { name: true, phone: true } },
   promotion: { select: { name: true } },
@@ -62,6 +70,32 @@ export const orderSelect = {
 
 export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>;
 
+/**
+ * Tax invoice as printed, or null if none was issued. The VAT is taken out of the VAT-inclusive total.
+ * The seller block is read from the environment when printed. Issued invoices keep their customer details.
+ */
+function taxInvoiceDetails(order: OrderRecord): OrderDetails["taxInvoice"] {
+  if (!order.taxInvoiceNo || !order.taxInvoiceAt) return null;
+  const seller = getSellerInfo();
+  const totalSatang = Math.round(Number(order.totalAmount) * 100);
+  const vatSatang = vatFromInclusiveSatang(totalSatang);
+  return {
+    number: order.taxInvoiceNo,
+    issuedAt: order.taxInvoiceAt.toISOString(),
+    seller: seller ?? { name: "", taxId: "", branch: "00000", address: "" },
+    customer: {
+      name: order.taxCustomerName ?? "",
+      branch: order.taxCustomerBranch ?? "00000",
+      address: order.taxCustomerAddress ?? "",
+      taxId: order.taxCustomerTaxId ?? "",
+    },
+    totalInclVat: formatMoney(order.totalAmount),
+    valueExVat: (Number(totalSatang - vatSatang) / 100).toFixed(2),
+    vat: (vatSatang / 100).toFixed(2),
+    vatPercent: VAT_PERCENT,
+  };
+}
+
 export function serializeOrder(order: OrderRecord): OrderDetails {
   return {
     id: order.id,
@@ -89,6 +123,7 @@ export function serializeOrder(order: OrderRecord): OrderDetails {
     refundedAmount: formatMoney(order.refundedAmount),
     voidReason: order.voidReason,
     voidedAt: order.voidedAt?.toISOString() ?? null,
+    taxInvoice: taxInvoiceDetails(order),
     payments: order.payments.map((payment) => ({
       id: payment.id,
       method: payment.method,

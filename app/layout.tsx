@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toast";
 import { LocaleProvider } from "@/lib/i18n/client";
 import { getServerLocale } from "@/lib/i18n/server";
+import { NetworkProvider } from "@/components/network-status";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -42,7 +43,7 @@ export default function RootLayout({
     <html lang={locale} className={cn("font-sans", geistSans.variable, geistMono.variable, notoThai.variable)}>
       <body className="bg-background text-foreground antialiased">
         <LocaleProvider initialLocale={locale}>
-          {children}
+          <NetworkProvider>{children}</NetworkProvider>
           <Toaster />
         </LocaleProvider>
       </body>
