@@ -12,7 +12,7 @@ import { buildEod, eodExport } from "@/lib/eod";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const KINDS = ["payments", "refunds", "voids", "summary", "inventory", "movements", "members", "shifts", "eod"] as const;
+const KINDS = ["payments", "refunds", "voids", "summary", "inventory", "movements", "members", "shifts", "eod", "categories", "colors"] as const;
 type Kind = (typeof KINDS)[number];
 
 /** Kinds that depend on a date range. Inventory and members are snapshots of right now. */
@@ -163,6 +163,30 @@ async function buildDataset(kind: Kind, from: string, to: string, params: URLSea
           shift.reviewedAt ? bangkokYmd(shift.reviewedAt) : null, shift.reviewNote,
         ];
       }),
+      textColumns: [0],
+    };
+  }
+
+  if (kind === "categories") {
+    const categories = await prisma.category.findMany({
+      orderBy: { code: "asc" },
+      select: { code: true, name: true, nameTh: true, _count: { select: { products: true } } },
+    });
+    return {
+      header: ["Category_Code", "Category_Name", "Category_Name_TH", "Products"],
+      rows: categories.map((c) => [c.code, c.name, c.nameTh, c._count.products]),
+      textColumns: [0],
+    };
+  }
+
+  if (kind === "colors") {
+    const colors = await prisma.color.findMany({
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+      select: { code: true, name: true, nameTh: true, _count: { select: { variants: true } } },
+    });
+    return {
+      header: ["Color_Code", "Color_Name", "Color_Name_TH", "Variants"],
+      rows: colors.map((c) => [c.code, c.name, c.nameTh, c._count.variants]),
       textColumns: [0],
     };
   }

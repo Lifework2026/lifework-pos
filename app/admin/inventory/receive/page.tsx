@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2, PackagePlus, ScanLine, Search, Trash2 } from "lucide-react";
+import { CheckCircle2, FileSpreadsheet, Loader2, PackagePlus, ScanLine, Search, Trash2 } from "lucide-react";
+import { ActionBar } from "@/components/admin/action-bar";
+import { ImportForm } from "@/components/admin/import-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -208,48 +210,64 @@ export default function ReceiveStockPage() {
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Search className="size-4" /> {t("receive.find")}
-            </CardTitle>
-            <CardDescription className="flex items-center gap-2">
-              <ScanLine className="size-4" />
-              {lastScanned ? t("receive.lastScan", { code: lastScanned }) : t("receive.scannerReady")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("receive.searchPlaceholder")}
-              aria-label={t("receive.searchAria")}
-              className="h-11"
-            />
-            {searching ? (
-              <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" /> {t("receive.searching")}
-              </p>
-            ) : null}
-            {results.length > 0 ? (
-              <ul className="max-h-72 divide-y overflow-y-auto rounded-md border">
-                {results.map((variant) => (
-                  <li key={variant.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{variant.product.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {variant.size} · {variant.color} · <span className="font-mono">{variant.sku}</span> · {t("receive.stock", { count: variant.stockQuantity })}
-                      </p>
-                    </div>
-                    <Button size="sm" variant="outline" onClick={() => addVariant(variant)}>
-                      {t("receive.add")}
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </CardContent>
-        </Card>
+        <ActionBar createHref="/admin/products/new" template="C" exportKind="inventory" />
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Search className="size-4" /> {t("receive.find")}
+              </CardTitle>
+              <CardDescription className="flex items-center gap-2">
+                <ScanLine className="size-4" />
+                {lastScanned ? t("receive.lastScan", { code: lastScanned }) : t("receive.scannerReady")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <Input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={t("receive.searchPlaceholder")}
+                aria-label={t("receive.searchAria")}
+                className="h-11"
+              />
+              {searching ? (
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" /> {t("receive.searching")}
+                </p>
+              ) : null}
+              {results.length > 0 ? (
+                <ul className="max-h-72 divide-y overflow-y-auto rounded-md border">
+                  {results.map((variant) => (
+                    <li key={variant.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{variant.product.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {variant.size} · {variant.color} · <span className="font-mono">{variant.sku}</span> · {t("receive.stock", { count: variant.stockQuantity })}
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => addVariant(variant)}>
+                        {t("receive.add")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileSpreadsheet className="size-4" /> {t("xls.bulkZone")}
+              </CardTitle>
+              <CardDescription>{t("xls.bulkZoneHint")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ImportForm type="C" />
+            </CardContent>
+          </Card>
+        </div>
 
         <Card>
           <CardHeader>

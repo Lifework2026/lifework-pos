@@ -11,9 +11,11 @@ import type { Prisma } from "@prisma/client";
 import { MAX_PRICE_ROWS, PRICE_TEMPLATE_HEADER } from "@/lib/catalog/price-import";
 import { MAX_STOCK_ROWS, STOCK_TEMPLATE_HEADER } from "@/lib/catalog/stock-import";
 import { TEMPLATE_HEADER } from "@/lib/catalog/import";
+import { CATEGORY_TEMPLATE_HEADER, COLOR_TEMPLATE_HEADER, MAX_MASTER_ROWS } from "@/lib/catalog/master-import";
+import { MEMBER_TEMPLATE_HEADER, MAX_MEMBER_ROWS } from "@/lib/members/import";
 import { prisma } from "@/lib/prisma";
 
-export type TemplateType = "A" | "B" | "C";
+export type TemplateType = "A" | "B" | "C" | "D" | "E" | "F";
 
 export const NEW_PRODUCT_HEADER = TEMPLATE_HEADER;
 
@@ -114,10 +116,57 @@ export const TEMPLATES: Record<TemplateType, TemplateSpec> = {
       `Up to ${MAX_STOCK_ROWS} rows per file. Row 2 is an example: replace or delete it.`,
     ],
   },
+  D: {
+    title: "D. Categories",
+    file: "lifework-template-D-categories.xlsx",
+    header: CATEGORY_TEMPLATE_HEADER,
+    example: () => ["EXAMPLE-CAT", "EXAMPLE CATEGORY"],
+    textColumns: [0],
+    widths: [18, 30],
+    instructions: [
+      "Use this template to create categories and rename them in bulk. Rows are matched by Category_Code.",
+      "Category_Code (key): 2 to 20 letters, digits or dashes, upper case, for example CAT-SHIRT. It is unique and cannot be shared.",
+      "Category_Name: the category name in English. If the code already exists, its name is updated. If not, a new category is created.",
+      "A name that another category already uses is refused, so two codes never share a name.",
+      "Products keep their category when a category is renamed. Categories are never deleted by this import.",
+      `Up to ${MAX_MASTER_ROWS} rows per file. Row 2 is an example: replace or delete it.`,
+    ],
+  },
+  E: {
+    title: "E. Colours",
+    file: "lifework-template-E-colours.xlsx",
+    header: COLOR_TEMPLATE_HEADER,
+    example: () => ["EXAMPLE-COL", "Example Colour"],
+    textColumns: [0],
+    widths: [18, 30],
+    instructions: [
+      "Use this template to create colours and rename them in bulk. Rows are matched by Color_Code.",
+      "Color_Code (key): 2 to 20 letters, digits or dashes, upper case, for example COL-BLK. It is unique and cannot be shared.",
+      "Color_Name: the colour name in English. If the code already exists, the colour is renamed and every product that uses it shows the new name.",
+      "A name that another colour already uses is refused.",
+      `Up to ${MAX_MASTER_ROWS} rows per file. Row 2 is an example: replace or delete it.`,
+    ],
+  },
+  F: {
+    title: "F. Members",
+    file: "lifework-template-F-members.xlsx",
+    header: MEMBER_TEMPLATE_HEADER,
+    example: () => ["0800000000", "EXAMPLE", "Member", "0"],
+    textColumns: [0],
+    widths: [16, 18, 18, 10],
+    instructions: [
+      "Use this template to add members and update their names and points in bulk. Rows are matched by Phone_Number.",
+      "Phone_Number (key): 9 or 10 digits starting with 0. Dashes and spaces are ignored. A phone that exists updates that member; a new phone creates one.",
+      "First_Name: required. Last_Name: optional. Names are joined with a space.",
+      "Points: the point balance to set for the member. It replaces the current balance, it does not add to it. Leave blank to keep the current balance; a new member starts at 0.",
+      "Every change is written to the audit log with the old and new values.",
+      `Up to ${MAX_MEMBER_ROWS} rows per file. Row 2 is an example: replace or delete it. A row whose First_Name is EXAMPLE is refused.`,
+    ],
+  },
 };
 
 export function isTemplateType(value: string | null | undefined): value is TemplateType {
-  return value === "A" || value === "B" || value === "C";
+  return value !== undefined && value !== null && ["A", "B", "C", "D", "E", "F"].includes(value);
 }
 
 /** Example row for a template, with the live codes for Template A. */

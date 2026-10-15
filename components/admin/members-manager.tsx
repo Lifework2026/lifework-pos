@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { ActionBar } from "@/components/admin/action-bar";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -77,17 +78,7 @@ export function MembersManager() {
           <h1 className="text-2xl font-bold tracking-tight">{t("members.title")}</h1>
           <p className="text-sm text-muted-foreground">{t("members.desc")}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={() => setPanel({ kind: "create" })}>
-            <Plus className="size-4" /> {t("members.add")}
-          </Button>
-          <a href="/api/admin/export?kind=members&format=xlsx" className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted">
-            {t("members.exportExcel")}
-          </a>
-          <a href="/api/admin/export?kind=members&format=csv" className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted">
-            {t("members.exportCsv")}
-          </a>
-        </div>
+        <ActionBar onCreate={() => setPanel({ kind: "create" })} template="F" exportKind="members" />
       </div>
 
       <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("members.search")} aria-label={t("members.search")} className="h-10 max-w-md" />

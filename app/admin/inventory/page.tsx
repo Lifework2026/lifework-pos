@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { ActionBar } from "@/components/admin/action-bar";
 import { formatBaht } from "@/lib/format";
 import { getServerLocale, serverT } from "@/lib/i18n/server";
 import { localizedName } from "@/lib/payment-labels";
@@ -33,7 +34,7 @@ function stockWhere(filter: StockFilter): Prisma.ProductVariantWhereInput {
   }
 }
 
-/** Stock overview: every variant with its exact quantity. Variants at or under the threshold are flagged. */
+/** Stock overview: every variant with its exact quantity, SKU, barcode and catalog codes. Low variants are flagged. */
 export default async function InventoryPage({ searchParams }: InventoryPageProps) {
   const locale = getServerLocale();
   const t = serverT(locale);
@@ -68,13 +69,14 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
         price: true,
         stockQuantity: true,
         isActive: true,
+        colorRef: { select: { code: true } },
         product: {
           select: {
             id: true,
             name: true,
             nameTh: true,
             brand: true,
-            category: { select: { name: true, nameTh: true } },
+            category: { select: { code: true, name: true, nameTh: true } },
           },
         },
       },
@@ -96,18 +98,21 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("inventory.title")}</h1>
-        <p className="text-sm text-muted-foreground">
-          <span className={lowCount > 0 ? "font-medium text-amber-700" : ""}>
-            {t("inventory.summary", {
-              variants: totals._count._all,
-              units: totals._sum.stockQuantity ?? 0,
-              low: lowCount,
-              threshold: LOW_STOCK_THRESHOLD,
-            })}
-          </span>
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t("inventory.title")}</h1>
+          <p className="text-sm text-muted-foreground">
+            <span className={lowCount > 0 ? "font-medium text-amber-700" : ""}>
+              {t("inventory.summary", {
+                variants: totals._count._all,
+                units: totals._sum.stockQuantity ?? 0,
+                low: lowCount,
+                threshold: LOW_STOCK_THRESHOLD,
+              })}
+            </span>
+          </p>
+        </div>
+        <ActionBar createHref="/admin/products/new" template="C" exportKind="inventory" />
       </div>
 
       <form className="grid gap-3 rounded-xl border bg-background p-4 md:grid-cols-[1fr_200px_180px_auto] md:items-end">
@@ -151,7 +156,7 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
       </form>
 
       <div className="overflow-x-auto rounded-xl border bg-background">
-        <table className="w-full min-w-[960px] text-sm">
+        <table className="w-full min-w-[1080px] text-sm">
           <thead className="bg-muted/50 text-left text-muted-foreground">
             <tr>
               <th className="px-4 py-2 font-medium">{t("inventory.colProduct")}</th>
@@ -187,9 +192,15 @@ export default async function InventoryPage({ searchParams }: InventoryPageProps
                       {variant.isActive ? "" : ` · ${t("inventory.inactive")}`}
                     </p>
                   </td>
-                  <td className="px-4 py-2">{localizedName(locale, variant.product.category.name, variant.product.category.nameTh)}</td>
+                  <td className="px-4 py-2">
+                    {localizedName(locale, variant.product.category.name, variant.product.category.nameTh)}
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">{variant.product.category.code}</span>
+                  </td>
                   <td className="px-4 py-2">{variant.size}</td>
-                  <td className="px-4 py-2">{variant.color}</td>
+                  <td className="px-4 py-2">
+                    {variant.color}
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">{variant.colorRef?.code}</span>
+                  </td>
                   <td className="px-4 py-2 font-mono text-xs">{variant.sku}</td>
                   <td className="px-4 py-2 font-mono text-xs">{variant.barcode}</td>
                   <td className="px-4 py-2 text-right tabular-nums">

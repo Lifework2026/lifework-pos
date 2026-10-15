@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Check, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ActionBar } from "@/components/admin/action-bar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -164,9 +165,12 @@ export function CatalogManager() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("catalog.title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("catalog.desc")}</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t("catalog.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("catalog.desc")}</p>
+        </div>
+        <ActionBar onCreate={() => document.getElementById("catalog-category-code")?.focus()} template="D" exportKind="categories" />
       </div>
 
       {error ? (
@@ -184,6 +188,7 @@ export function CatalogManager() {
           <CardContent className="flex flex-col gap-4">
             <div className="grid gap-2 sm:grid-cols-[8rem_1fr_1fr_auto]">
               <Input
+                id="catalog-category-code"
                 value={newCategoryCode}
                 onChange={(e) => setNewCategoryCode(e.target.value.toUpperCase())}
                 placeholder={t("catalog.codePlaceholder")}
@@ -205,78 +210,93 @@ export function CatalogManager() {
             ) : categories.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t("catalog.noCategories")}</p>
             ) : (
-              <ul className="divide-y rounded-md border">
-                {categories.map((row) => (
-                  <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                    {editingCategory?.id === row.id ? (
-                      <>
-                        <div className="grid flex-1 gap-2 sm:grid-cols-3">
-                          <Input
-                            value={editingCategory.code}
-                            onChange={(e) => setEditingCategory({ ...editingCategory, code: e.target.value.toUpperCase() })}
-                            maxLength={20}
-                            aria-label={t("catalog.code")}
-                            className="font-mono"
-                          />
-                          <Input
-                            value={editingCategory.name}
-                            onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
-                            maxLength={80}
-                            aria-label={t("catalog.nameEn")}
-                          />
-                          <Input
-                            value={editingCategory.nameTh}
-                            onChange={(e) => setEditingCategory({ ...editingCategory, nameTh: e.target.value })}
-                            maxLength={80}
-                            aria-label={t("catalog.nameTh")}
-                          />
-                        </div>
-                        <div className="flex gap-1">
-                          <Button size="icon-sm" onClick={saveCategory} disabled={busy || !editingCategory.name.trim() || !editingCategory.code.trim()} aria-label={t("catalog.save")}>
-                            <Check className="size-4" />
-                          </Button>
-                          <Button size="icon-sm" variant="ghost" onClick={() => setEditingCategory(null)} aria-label={t("common.cancel")}>
-                            <X className="size-4" />
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="min-w-0 text-sm">
-                          <p className="truncate font-medium">
-                            <span className="mr-2 font-mono text-xs text-muted-foreground">{row.code}</span>
-                            {row.name}
-                          </p>
-                          <p className="truncate text-xs text-muted-foreground">
-                            {row.nameTh ?? "—"} · {t("catalog.productCount", { count: row.productCount })}
-                          </p>
-                        </div>
-                        <div className="flex gap-1">
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => setEditingCategory({ id: row.id, code: row.code, name: row.name, nameTh: row.nameTh ?? "" })}
-                            aria-label={t("products.edit")}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            className="text-destructive"
-                            onClick={() => removeCategory(row)}
-                            disabled={busy || row.productCount > 0}
-                            title={row.productCount > 0 ? t("catalog.inUse") : undefined}
-                            aria-label={t("catalog.delete")}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </div>
-                      </>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full min-w-[460px] text-sm">
+                  <thead className="bg-muted/50 text-left text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">{t("catalog.code")}</th>
+                      <th className="px-3 py-2 font-medium">{t("catalog.nameEn")}</th>
+                      <th className="px-3 py-2 font-medium">{t("catalog.nameTh")}</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map((row) =>
+                      editingCategory?.id === row.id ? (
+                        <tr key={row.id} className="border-t">
+                          <td className="px-3 py-2">
+                            <Input
+                              value={editingCategory.code}
+                              onChange={(e) => setEditingCategory({ ...editingCategory, code: e.target.value.toUpperCase() })}
+                              maxLength={20}
+                              aria-label={t("catalog.code")}
+                              className="font-mono"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={editingCategory.name}
+                              onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
+                              maxLength={80}
+                              aria-label={t("catalog.nameEn")}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <Input
+                              value={editingCategory.nameTh}
+                              onChange={(e) => setEditingCategory({ ...editingCategory, nameTh: e.target.value })}
+                              maxLength={80}
+                              aria-label={t("catalog.nameTh")}
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end gap-1">
+                              <Button size="icon-sm" onClick={saveCategory} disabled={busy || !editingCategory.name.trim() || !editingCategory.code.trim()} aria-label={t("catalog.save")}>
+                                <Check className="size-4" />
+                              </Button>
+                              <Button size="icon-sm" variant="ghost" onClick={() => setEditingCategory(null)} aria-label={t("common.cancel")}>
+                                <X className="size-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <tr key={row.id} className="border-t">
+                          <td className="px-3 py-2 font-mono text-xs font-semibold">{row.code}</td>
+                          <td className="px-3 py-2">
+                            <p className="font-medium">{row.name}</p>
+                            <p className="text-xs text-muted-foreground">{t("catalog.productCount", { count: row.productCount })}</p>
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground">{row.nameTh ?? "—"}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex justify-end gap-1">
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                onClick={() => setEditingCategory({ id: row.id, code: row.code, name: row.name, nameTh: row.nameTh ?? "" })}
+                                aria-label={t("products.edit")}
+                              >
+                                <Pencil className="size-4" />
+                              </Button>
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                className="text-destructive"
+                                onClick={() => removeCategory(row)}
+                                disabled={busy || row.productCount > 0}
+                                title={row.productCount > 0 ? t("catalog.inUse") : undefined}
+                                aria-label={t("catalog.delete")}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ),
                     )}
-                  </li>
-                ))}
-              </ul>
+                  </tbody>
+                </table>
+              </div>
             )}
           </CardContent>
         </Card>

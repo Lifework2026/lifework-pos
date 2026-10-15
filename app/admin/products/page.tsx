@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
+import { ActionBar } from "@/components/admin/action-bar";
 import { ProductThumb } from "@/components/pos/product-thumb";
 import { prisma } from "@/lib/prisma";
 import { formatBaht } from "@/lib/format";
@@ -9,12 +10,13 @@ import { localizedName } from "@/lib/payment-labels";
 export const dynamic = "force-dynamic";
 
 const ROW_LIMIT = 300;
+const SHOWN_VARIANTS = 3;
 
 interface ProductsPageProps {
   searchParams: { q?: string; category?: string; status?: string };
 }
 
-/** Product catalogue: photo, category, stock and price range at a glance. */
+/** Product catalogue: photo, category code, SKU and barcode, stock and price range at a glance. */
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
   const locale = getServerLocale();
   const t = serverT(locale);
@@ -32,6 +34,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
             { nameTh: { contains: q, mode: "insensitive" } },
             { brand: { contains: q, mode: "insensitive" } },
             { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
+            { variants: { some: { barcode: q } } },
           ],
         }
       : {}),
@@ -49,8 +52,19 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         brand: true,
         imageUrl: true,
         isActive: true,
-        category: { select: { name: true, nameTh: true } },
-        variants: { select: { price: true, stockQuantity: true, isActive: true } },
+        category: { select: { code: true, name: true, nameTh: true } },
+        variants: {
+          orderBy: [{ size: "asc" }],
+          select: {
+            sku: true,
+            barcode: true,
+            size: true,
+            price: true,
+            stockQuantity: true,
+            isActive: true,
+            colorRef: { select: { code: true } },
+          },
+        },
       },
     }),
     prisma.product.count({ where }),
@@ -67,22 +81,11 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           <h1 className="text-2xl font-bold tracking-tight">{t("products.listTitle")}</h1>
           <p className="text-sm text-muted-foreground">{t("products.listSummary", { count: total })}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href="/admin/products/new" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
-            {t("products.newTitle")}
-          </Link>
-          <Link href="/admin/products/import" className={linkButton}>
-            {t("products.import")}
-          </Link>
-          <Link href="/admin/catalog" className={linkButton}>
+        <div className="flex flex-col items-end gap-2">
+          <ActionBar createHref="/admin/products/new" template="A" exportKind="inventory" />
+          <Link href="/admin/catalog" className="text-sm text-muted-foreground underline">
             {t("products.catalog")}
           </Link>
-          <a href="/api/admin/export?kind=inventory&format=xlsx" className={linkButton}>
-            {t("products.exportExcel")}
-          </a>
-          <a href="/api/admin/export?kind=inventory&format=csv" className={linkButton}>
-            {t("products.exportCsv")}
-          </a>
         </div>
       </div>
 
@@ -121,11 +124,12 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       </form>
 
       <div className="overflow-x-auto rounded-xl border bg-background">
-        <table className="w-full min-w-[820px] text-sm">
+        <table className="w-full min-w-[980px] text-sm">
           <thead className="bg-muted/50 text-left text-muted-foreground">
             <tr>
               <th className="px-4 py-2 font-medium">{t("products.colProduct")}</th>
               <th className="px-4 py-2 font-medium">{t("products.category")}</th>
+              <th className="px-4 py-2 font-medium">{t("products.colSkuCodes")}</th>
               <th className="px-4 py-2 text-right font-medium">{t("products.colVariantCount")}</th>
               <th className="px-4 py-2 text-right font-medium">{t("products.colStock")}</th>
               <th className="px-4 py-2 text-right font-medium">{t("products.colPriceRange")}</th>
@@ -136,7 +140,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           <tbody>
             {products.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-10 text-center text-muted-foreground">
                   {t("products.noMatch")}
                 </td>
               </tr>
@@ -146,8 +150,9 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
               const min = prices.length ? Math.min(...prices) : 0;
               const max = prices.length ? Math.max(...prices) : 0;
               const stock = product.variants.reduce((sum, variant) => sum + variant.stockQuantity, 0);
+              const hidden = product.variants.length - SHOWN_VARIANTS;
               return (
-                <tr key={product.id} className={`border-t ${product.isActive ? "" : "opacity-60"}`}>
+                <tr key={product.id} className={`border-t align-top ${product.isActive ? "" : "opacity-60"}`}>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
                       <ProductThumb src={product.imageUrl} alt={product.name} className="size-12 shrink-0" />
@@ -157,7 +162,24 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-2">{localizedName(locale, product.category.name, product.category.nameTh)}</td>
+                  <td className="px-4 py-2">
+                    <p>{localizedName(locale, product.category.name, product.category.nameTh)}</p>
+                    <p className="font-mono text-xs text-muted-foreground">{product.category.code}</p>
+                  </td>
+                  <td className="px-4 py-2">
+                    <ul className="flex flex-col gap-0.5 text-xs">
+                      {product.variants.slice(0, SHOWN_VARIANTS).map((variant, index) => (
+                        <li key={`${variant.sku}-${index}`} className="flex flex-wrap gap-x-2">
+                          <span className="font-mono">{variant.sku}</span>
+                          <span className="font-mono text-muted-foreground">{variant.barcode}</span>
+                          <span className="text-muted-foreground">
+                            {variant.colorRef?.code ?? "—"} · {variant.size}
+                          </span>
+                        </li>
+                      ))}
+                      {hidden > 0 ? <li className="text-muted-foreground">{t("products.moreVariants", { count: hidden })}</li> : null}
+                    </ul>
+                  </td>
                   <td className="px-4 py-2 text-right tabular-nums">{product.variants.length}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{stock}</td>
                   <td className="px-4 py-2 text-right tabular-nums">
