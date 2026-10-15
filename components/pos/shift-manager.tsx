@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Banknote, CheckCircle2, Loader2, LogOut, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/toast";
 import { formatBaht } from "@/lib/format";
 import { requestJson } from "@/lib/http";
 import { useI18n } from "@/lib/i18n/client";
@@ -34,13 +35,18 @@ interface ShiftManagerProps {
   cartHasItems: boolean;
   /** Bumped by the till after each sale, so the receipt count refreshes. */
   salesVersion: number;
+  /** Set when the cashier tried to sign out. Sign-out waits until the drawer is counted. */
+  signOutRequested: boolean;
+  onSignOutRequestHandled: () => void;
 }
 
 /**
  * Cash-drawer shift for the till. A cashier must declare the starting cash before selling, and counts the drawer
  * at the end. The count is blind: the expected amount is only shown after the shift is closed.
  */
-export function ShiftManager({ onOpenChange, cartHasItems, salesVersion }: ShiftManagerProps) {
+export function ShiftManager({ onOpenChange, cartHasItems, salesVersion, signOutRequested, onSignOutRequestHandled }: ShiftManagerProps) {
+  // One lock for open and close: a second tap while a request is in flight does nothing.
+  const busyRef = useRef(false);
   const { t, locale } = useI18n();
   const router = useRouter();
   const [shift, setShift] = useState<OpenShift | null>(null);
@@ -81,10 +87,24 @@ export function ShiftManager({ onOpenChange, cartHasItems, salesVersion }: Shift
     onOpenChange(shift !== null);
   }, [shift, onOpenChange]);
 
+  useEffect(() => {
+    if (signOutRequested && loaded && !shift) onSignOutRequestHandled();
+  }, [signOutRequested, loaded, shift, onSignOutRequestHandled]);
+
   const time = (iso: string) =>
     new Date(iso).toLocaleTimeString(locale === "th" ? "th-TH" : "en-GB", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
   async function openShift(): Promise<void> {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      await submitOpen();
+    } finally {
+      busyRef.current = false;
+    }
+  }
+
+  async function submitOpen(): Promise<void> {
     setError(null);
     const value = Number(floatInput);
     if (floatInput.trim() === "" || !Number.isFinite(value) || value < 0) {
@@ -109,9 +129,20 @@ export function ShiftManager({ onOpenChange, cartHasItems, salesVersion }: Shift
     setShift(response.data.shift);
     setFloatInput("");
     setOpenNote("");
+    toast.add({ title: t("shiftOpen.toast"), type: "success" });
   }
 
   async function closeShift(): Promise<void> {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    try {
+      await submitClose();
+    } finally {
+      busyRef.current = false;
+    }
+  }
+
+  async function submitClose(): Promise<void> {
     setError(null);
     const value = Number(counted);
     if (counted.trim() === "" || !Number.isFinite(value) || value < 0) {
@@ -136,6 +167,7 @@ export function ShiftManager({ onOpenChange, cartHasItems, salesVersion }: Shift
     setClosing(false);
     setResult(response.data.shift);
     setShift(null);
+    toast.add({ title: t("shifts.closedToast"), type: "success" });
     setCounted("");
     setCloseNote("");
   }
@@ -162,6 +194,30 @@ export function ShiftManager({ onOpenChange, cartHasItems, salesVersion }: Shift
           </Button>
         </div>
       ) : null}
+
+      {/* Sign-out is blocked until the drawer is counted. The modal cannot be dismissed except by going back to sales. */}
+      <Dialog open={signOutRequested && shift !== null && !closing && result === null} onOpenChange={() => undefined}>
+        <DialogContent showCloseButton={false} className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("signout.blockTitle")}</DialogTitle>
+            <DialogDescription>{t("signout.blockBody")}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button variant="outline" onClick={onSignOutRequestHandled}>
+              {t("signout.backToSales")}
+            </Button>
+            <Button
+              onClick={() => {
+                onSignOutRequestHandled();
+                setError(null);
+                setClosing(true);
+              }}
+            >
+              {t("signout.closeAndCount")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Blocking gate: nothing can be sold until the starting cash is declared. */}
       <Dialog open={loaded && !shift && !result} onOpenChange={() => undefined}>

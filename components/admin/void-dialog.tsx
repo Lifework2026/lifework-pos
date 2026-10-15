@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -24,11 +24,15 @@ export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
   const router = useRouter();
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // A ref, not state, so two taps in the same frame cannot both submit.
+  const submitLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const restocked = order.items.reduce((sum, item) => sum + (item.quantity - item.refundedQuantity), 0);
 
   async function submit(): Promise<void> {
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -48,6 +52,7 @@ export function VoidDialog({ order, open, onOpenChange }: VoidDialogProps) {
     } catch {
       setError(t("common.networkError"));
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   }

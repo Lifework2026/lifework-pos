@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +35,8 @@ export function RefundDialog({ order, open, onOpenChange }: RefundDialogProps) {
   const [references, setReferences] = useState<Record<string, string>>({});
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // A ref, not state, so two taps in the same frame cannot both submit.
+  const submitLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const refundable = order.items.filter((item) => item.quantity - item.refundedQuantity > 0);
@@ -83,6 +85,8 @@ export function RefundDialog({ order, open, onOpenChange }: RefundDialogProps) {
   const canSubmit = hasSelection && !anyInvalid && slices !== null && reason.trim().length >= 3 && referencesOk && !submitting;
 
   async function submit(): Promise<void> {
+    if (submitLock.current) return;
+    submitLock.current = true;
     setSubmitting(true);
     setError(null);
     try {
@@ -113,6 +117,7 @@ export function RefundDialog({ order, open, onOpenChange }: RefundDialogProps) {
     } catch {
       setError(t("common.networkError"));
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   }

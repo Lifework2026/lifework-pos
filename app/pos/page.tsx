@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, LayoutDashboard, UserRound } from "lucide-react";
 import { CartPanel } from "@/components/pos/cart-panel";
+import { CartSkeleton } from "@/components/pos/skeletons";
 import { CheckoutDialog } from "@/components/pos/checkout-dialog";
 import { HeldBillsDialog } from "@/components/pos/held-bills-dialog";
 import { ProductPanel } from "@/components/pos/product-panel";
 import { ShiftManager } from "@/components/pos/shift-manager";
 import { SignOutButton } from "@/components/auth/sign-out-button";
+import { SessionProvider } from "@/components/auth/session-context";
 import { LocaleToggle } from "@/components/locale-toggle";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -51,6 +53,7 @@ export default function PosPage() {
   const [lastScannedBarcode, setLastScannedBarcode] = useState<string | null>(null);
   const [lastSale, setLastSale] = useState<OrderDetails | null>(null);
   const [shiftOpen, setShiftOpen] = useState(false);
+  const [signOutRequested, setSignOutRequested] = useState(false);
   const [salesVersion, setSalesVersion] = useState(0);
 
   useEffect(() => {
@@ -186,60 +189,76 @@ export default function PosPage() {
   const isManager = user?.role === "ADMIN" || user?.role === "MANAGER";
 
   return (
-    <main className="flex min-h-dvh flex-col gap-4 bg-muted/30 p-4 lg:h-dvh">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight">Lifework POS</h1>
-          {lastSale ? (
-            <p className="flex items-center gap-1 text-xs text-muted-foreground">
-              <CheckCircle2 className="size-3.5 text-emerald-600" />
-              {t("pos.lastSale", { receipt: lastSale.receiptNo })}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <ShiftManager onOpenChange={setShiftOpen} cartHasItems={cartHasItems} salesVersion={salesVersion} />
-          <LocaleToggle />
-          {user ? (
-            <Badge variant="outline" className="gap-1 py-1">
-              <UserRound className="size-3.5" />
-              {user.fullName}
-            </Badge>
-          ) : null}
-          {isManager ? (
-            <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
-              <LayoutDashboard className="size-4" />
-              {t("common.backOffice")}
-            </Link>
-          ) : null}
-          <SignOutButton />
-        </div>
-      </header>
+    <SessionProvider value={user}>
+      <main className="flex min-h-dvh flex-col gap-4 bg-muted/30 p-4 lg:h-dvh">
+        <header className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold tracking-tight">Lifework POS</h1>
+            {lastSale ? (
+              <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                <CheckCircle2 className="size-3.5 text-emerald-600" />
+                {t("pos.lastSale", { receipt: lastSale.receiptNo })}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <ShiftManager
+              onOpenChange={setShiftOpen}
+              cartHasItems={cartHasItems}
+              salesVersion={salesVersion}
+              signOutRequested={signOutRequested}
+              onSignOutRequestHandled={() => setSignOutRequested(false)}
+            />
+            <LocaleToggle />
+            {user ? (
+              <Badge variant="outline" className="gap-1 py-1">
+                <UserRound className="size-3.5" />
+                {user.fullName}
+              </Badge>
+            ) : null}
+            {isManager ? (
+              <Link href="/admin" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                <LayoutDashboard className="size-4" />
+                {t("common.backOffice")}
+              </Link>
+            ) : null}
+            <SignOutButton onShiftOpen={() => setSignOutRequested(true)} />
+          </div>
+        </header>
 
-      <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_400px]">
-        <div className="min-h-0 rounded-xl border bg-background p-4">
-          <ProductPanel onSelectVariant={addVariant} scannerActive={!checkoutOpen && !heldOpen && shiftOpen} lastScannedBarcode={lastScannedBarcode} />
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_400px]">
+          <div className="min-h-0 rounded-xl border bg-background p-4">
+            <ProductPanel
+              onSelectVariant={addVariant}
+              scannerActive={!checkoutOpen && !heldOpen && shiftOpen}
+              lastScannedBarcode={lastScannedBarcode}
+            />
+          </div>
+
+          <div className="min-h-[24rem] lg:min-h-0">
+            {user ? (
+              <CartPanel
+                onCheckout={() => setCheckoutOpen(true)}
+                onHold={() => void holdCurrentBill()}
+                onOpenHeld={() => setHeldOpen(true)}
+                heldCount={heldCount}
+                holding={holding}
+              />
+            ) : (
+              <CartSkeleton />
+            )}
+          </div>
         </div>
 
-        <div className="min-h-[24rem] lg:min-h-0">
-          <CartPanel
-            onCheckout={() => setCheckoutOpen(true)}
-            onHold={() => void holdCurrentBill()}
-            onOpenHeld={() => setHeldOpen(true)}
-            heldCount={heldCount}
-            holding={holding}
-          />
-        </div>
-      </div>
-
-      <CheckoutDialog open={checkoutOpen} onOpenChange={setCheckoutOpen} onCompleted={handleCompleted} />
-      <HeldBillsDialog
-        open={heldOpen}
-        onOpenChange={setHeldOpen}
-        cartHasItems={cartHasItems}
-        onResumed={handleResumed}
-        onCountChange={setHeldCount}
-      />
-    </main>
+        <CheckoutDialog open={checkoutOpen} onOpenChange={setCheckoutOpen} onCompleted={handleCompleted} />
+        <HeldBillsDialog
+          open={heldOpen}
+          onOpenChange={setHeldOpen}
+          cartHasItems={cartHasItems}
+          onResumed={handleResumed}
+          onCountChange={setHeldCount}
+        />
+      </main>
+    </SessionProvider>
   );
 }

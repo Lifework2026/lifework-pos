@@ -115,6 +115,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
   const [lines, setLines] = useState<PaymentDraft[]>(() => [newLine("CASH", "")]);
   const [pendingIds, setPendingIds] = useState<Set<number>>(() => new Set());
   const [submitting, setSubmitting] = useState(false);
+  const submitLock = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<OrderDetails | null>(null);
   const autoSubmitRef = useRef(false);
@@ -241,7 +242,9 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
     !submitting;
 
   const submit = useCallback(async (): Promise<void> => {
-    if (submitting) return;
+    // A ref, not state: two taps in the same frame must not both send a sale.
+    if (submitting || submitLock.current) return;
+    submitLock.current = true;
     setSubmitting(true);
     setError(null);
 
@@ -277,6 +280,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
       setOrder(result.data.order);
       toast.add({ title: t("checkout.saleComplete"), description: result.data.order.receiptNo, type: "success" });
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   }, [submitting, items, bag, member, promotionId, redeemInput, manualDiscount, lines, t]);

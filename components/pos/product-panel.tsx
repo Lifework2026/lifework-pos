@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Package, Radio, Search } from "lucide-react";
+import { Package, Radio, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ProductTile } from "@/components/pos/product-tile";
+import { ProductGridSkeleton } from "@/components/pos/skeletons";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { localizedName } from "@/lib/payment-labels";
@@ -92,10 +93,7 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
     <section className="flex h-full min-h-0 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span
-            aria-hidden
-            className={`inline-block size-2.5 rounded-full ${scannerActive ? "bg-emerald-500" : "bg-muted-foreground"}`}
-          />
+          <span aria-hidden className={`inline-block size-2.5 rounded-full ${scannerActive ? "bg-emerald-500" : "bg-muted-foreground"}`} />
           <Badge variant={scannerActive ? "secondary" : "outline"} className="gap-1">
             <Radio className="size-3" />
             {scannerActive ? t("pos.scannerReady") : t("pos.scannerPaused")}
@@ -146,9 +144,7 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
 
       <ScrollArea className="min-h-0 flex-1 pr-3">
         {loading && variants.length === 0 ? (
-          <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> {t("pos.loadingProducts")}
-          </div>
+          <ProductGridSkeleton />
         ) : variants.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-center text-sm text-muted-foreground">
             <Package className="size-8" />

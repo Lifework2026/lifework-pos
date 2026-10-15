@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { canManage, useSessionUser } from "@/components/auth/session-context";
 import { Input } from "@/components/ui/input";
 import { formatBaht } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
@@ -37,6 +38,8 @@ interface CardPaymentLineProps {
  * Also offers the manual slip-reference fallback for a dead bridge.
  */
 export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange }: CardPaymentLineProps) {
+  // Typing a terminal reference by hand is a manager action only: it is the one way to record a card sale without the terminal.
+  const canManual = canManage(useSessionUser()?.role);
   const { t } = useI18n();
   const [payment, setPayment] = useState<EdcPaymentDto | null>(null);
   const [starting, setStarting] = useState(false);
@@ -182,7 +185,7 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
         </div>
       ) : null}
 
-      {!manualOpen && !approved ? (
+      {canManual && !manualOpen && !approved ? (
         <button
           type="button"
           className="self-start text-sm text-muted-foreground underline underline-offset-4"
@@ -192,7 +195,7 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
         </button>
       ) : null}
 
-      {manualOpen ? (
+      {canManual && manualOpen ? (
         <div className="flex flex-col gap-2">
           <label htmlFor={`manual-ref-${amount}`} className="text-sm font-medium">
             {t("card.terminalRef")}

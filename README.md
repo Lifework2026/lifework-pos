@@ -116,11 +116,16 @@ The Print button renders the receipt into a separate `#print-root` element and t
 | --- | --- | --- |
 | Till: sell, hold and resume bills | yes | yes |
 | Open and close own shift | yes | yes |
-| Member lookup and registration at the till | yes | yes |
+| Member lookup at the till | yes | yes |
+| Register a new member | no | yes |
+| Record a card payment by typing the terminal reference (manual entry) | no | yes |
+| Sign out | only after closing the open shift | yes |
 | Back-office pages, dashboards, exports | no | yes |
 | Refunds and voids | no | yes |
 | Stock receive and adjustments, catalogue, import | no | yes |
 | Members admin and point adjustments, promotions | no | yes |
 | Review shifts, close someone else's shift | no | yes |
+
+Sign-out is refused while the user has an open cash-drawer shift. The till then asks for the shift to be closed and the cash declared first.
 
 Access is enforced three times: the middleware sends cashiers away from `/admin` and answers `/api/admin` with 403; every `/api/admin` handler checks for a manager itself (`requireManager`, which re-reads the role from the database, so a demoted or deactivated account loses access immediately even with a valid session); and a unit test fails the build if an admin handler is added without that check.

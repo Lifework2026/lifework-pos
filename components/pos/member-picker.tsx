@@ -5,6 +5,7 @@ import { UserPlus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useI18n } from "@/lib/i18n/client";
+import { canManage, useSessionUser } from "@/components/auth/session-context";
 import type { ApiErrorBody, MemberSummary } from "@/lib/pos-types";
 
 interface MemberPickerProps {
@@ -16,6 +17,7 @@ interface MemberPickerProps {
 /** Finds a member by phone digits or name, or registers a new one at the till. */
 export function MemberPicker({ selected, onSelect, disabled }: MemberPickerProps) {
   const { t } = useI18n();
+  const canRegister = canManage(useSessionUser()?.role);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MemberSummary[]>([]);
   const [registering, setRegistering] = useState(false);
@@ -142,9 +144,11 @@ export function MemberPicker({ selected, onSelect, disabled }: MemberPickerProps
           ))}
         </ul>
       ) : null}
-      <Button variant="outline" size="sm" onClick={() => setRegistering(true)} disabled={disabled}>
-        <UserPlus className="size-4" /> {t("member.new")}
-      </Button>
+      {canRegister ? (
+        <Button variant="outline" size="sm" onClick={() => setRegistering(true)} disabled={disabled}>
+          <UserPlus className="size-4" /> {t("member.new")}
+        </Button>
+      ) : null}
     </div>
   );
 }

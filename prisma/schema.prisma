@@ -130,6 +130,9 @@ model Member {
   orders Order[]
 
   @@index([name])
+
+  /// Prefix search on phone (startsWith) uses this index. The unique index alone cannot serve LIKE 'x%' in a non-C collation.
+  @@index([phone(ops: raw("text_pattern_ops"))])
 }
 
 model Promotion {

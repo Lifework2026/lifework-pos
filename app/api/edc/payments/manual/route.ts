@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { z } from "zod";
-import { getCurrentSession } from "@/lib/auth/server";
 import { apiError } from "@/lib/api";
+import { requireManager } from "@/lib/api-helpers";
 import { recordManualEdcPayment } from "@/lib/edc/service";
 import { edcErrorResponse } from "@/lib/edc/http";
 
@@ -18,8 +18,8 @@ const manualSchema = z.object({
  * copies the reference and approval code from the terminal's slip.
  */
 export async function POST(request: NextRequest): Promise<Response> {
-  const session = await getCurrentSession();
-  if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
+  const auth = await requireManager();
+  if ("response" in auth) return auth.response;
 
   let payload: unknown;
   try {
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       amount: parsed.data.amount,
       transactionRef: parsed.data.transactionRef,
       approvalCode: parsed.data.approvalCode ?? null,
-      userId: session.id,
+      userId: auth.user.id,
     });
     return Response.json({ payment }, { status: 201 });
   } catch (err) {

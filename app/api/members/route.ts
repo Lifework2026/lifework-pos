@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
 import { getCurrentSession } from "@/lib/auth/server";
+import { requireManager } from "@/lib/api-helpers";
 import type { MemberSummary } from "@/lib/pos-types";
 import { normalizePhone } from "@/lib/phone";
 
@@ -44,8 +45,8 @@ export async function GET(request: NextRequest): Promise<Response> {
 
 /** POST /api/members: registers a new member. A phone number can belong to one member only. */
 export async function POST(request: NextRequest): Promise<Response> {
-  const session = await getCurrentSession();
-  if (!session) return apiError(401, "UNAUTHENTICATED", "Sign in to continue.");
+  const auth = await requireManager();
+  if ("response" in auth) return auth.response;
 
   let payload: unknown;
   try {
