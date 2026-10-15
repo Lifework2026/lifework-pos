@@ -352,7 +352,6 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
                       value={row.barcode}
                       onChange={(event) => updateRow(row.key, { barcode: event.target.value })}
                       placeholder={row.id ? "" : t("products.auto")}
-                      inputMode="numeric"
                       aria-label={`${t("products.colBarcode")} ${index + 1}`}
                       className="h-9 w-40 font-mono"
                     />

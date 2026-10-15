@@ -12,6 +12,7 @@
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { randomStoreEan13 } from "@/lib/barcode";
+import { BARCODE_RULE_MESSAGE, isValidBarcode } from "@/lib/barcode-rules";
 import { bahtToSatang, PricingError, satangToDecimal } from "@/lib/pricing";
 import { slugify } from "@/lib/slug";
 
@@ -222,7 +223,7 @@ export function parseImportTable(table: string[][]): ParsedImport {
     const barcodeText = get("barcode");
     let barcode: string | null = null;
     if (barcodeText) {
-      if (!/^\d{8,14}$/.test(barcodeText)) problems.push("Barcode must be 8 to 14 digits.");
+      if (!isValidBarcode(barcodeText)) problems.push(BARCODE_RULE_MESSAGE);
       else barcode = barcodeText;
     }
 

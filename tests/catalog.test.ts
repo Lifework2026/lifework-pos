@@ -154,16 +154,21 @@ const header = ["SKU", "Name", "Category", "Size", "Price", "Stock"];
     assert.ok(result.issues.some((issue) => issue.line === 3 && /listed under/.test(issue.message)));
   });
 
-  await test("import: barcode must be 8 to 14 digits, stock a whole number", () => {
+  await test("import: barcodes from the source (letters and digits) are accepted, stock must be a whole number", () => {
     const result = parseImportTable([
       [...header, "Barcode"],
-      ["B-1", "Tee", "Shirts", "M", "100", "1", "12ab"],
-      ["B-2", "Tee", "Shirts", "L", "100", "1.5", ""],
-      ["B-3", "Tee", "Shirts", "S", "100", "12.0", ""],
+      ["B-1", "Tee", "Shirts", "M", "100", "1", "LW265TS99035XL"],
+      ["B-2", "Tee", "Shirts", "L", "100", "2", "8859000000012"],
+      ["B-3", "Tee", "Shirts", "S", "100", "1.5", ""],
+      ["B-4", "Tee", "Shirts", "XS", "100", "1", "ab"],
+      ["B-5", "Tee", "Shirts", "XL", "100", "12.0", "12 34"],
     ]);
-    assert.ok(result.issues.some((i) => i.line === 2 && /Barcode/.test(i.message)));
-    assert.ok(result.issues.some((i) => i.line === 3 && /Stock/.test(i.message)));
-    assert.equal(result.rows.find((r) => r.sku === "B-3")?.stock, 12);
+    assert.equal(result.rows.find((r) => r.sku === "B-1")?.barcode, "LW265TS99035XL");
+    assert.equal(result.rows.find((r) => r.sku === "B-2")?.barcode, "8859000000012");
+    assert.ok(result.issues.some((i) => i.line === 4 && /Stock/.test(i.message)), "fractional stock");
+    assert.ok(result.issues.some((i) => i.line === 5 && /Barcode/.test(i.message)), "too-short barcode");
+    assert.ok(result.issues.some((i) => i.line === 6 && /Barcode/.test(i.message)), "barcode with a space");
+    assert.equal(result.rows.find((r) => r.sku === "B-5"), undefined);
   });
 
   await test("import: the row limit is enforced", () => {

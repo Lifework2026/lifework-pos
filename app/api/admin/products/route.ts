@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
 import { readBody, requireManager } from "@/lib/api-helpers";
 import { randomStoreEan13 } from "@/lib/barcode";
+import { BARCODE_RULE_MESSAGE, isValidBarcode } from "@/lib/barcode-rules";
 import { defaultSku, ImageBindingError, validateImageBinding } from "@/lib/catalog/sku";
 import { ensureSizes } from "@/lib/catalog/sizes";
 import { slugify } from "@/lib/slug";
@@ -15,7 +16,7 @@ const variantSchema = z.object({
   size: z.string().trim().min(1).max(20),
   color: z.string().trim().min(1).max(40),
   sku: z.string().trim().min(1).max(40).optional().nullable(),
-  barcode: z.string().trim().regex(/^\d{8,14}$/, "Barcode must be 8 to 14 digits.").optional().nullable(),
+  barcode: z.string().trim().refine(isValidBarcode, BARCODE_RULE_MESSAGE).optional().nullable(),
   price: z.number().positive().max(1_000_000),
   initialStock: z.number().int().min(0).max(100_000),
 });
