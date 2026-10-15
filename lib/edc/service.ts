@@ -203,7 +203,12 @@ export async function refreshEdcPayment(id: string): Promise<EdcPaymentDto> {
 
   if (payment.expiresAt.getTime() <= Date.now()) {
     if (payment.externalSessionId) {
-      await getEdcProvider().cancel(payment.externalSessionId).catch(() => undefined);
+      // A failed cancel must not pass silently: the terminal may still hold the request, so staff need to check it.
+      await getEdcProvider()
+        .cancel(payment.externalSessionId)
+        .catch((err: unknown) => {
+          console.error(`[edc] cancel failed after timeout for payment ${payment.id}; check the terminal`, err);
+        });
     }
     payment = await applyTerminalState(payment, { state: "TIMEOUT" });
     return toEdcPaymentDto(payment);

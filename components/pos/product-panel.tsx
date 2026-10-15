@@ -1,20 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Package, Radio, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ProductThumb } from "@/components/pos/product-thumb";
-import { formatBaht, parseMoney } from "@/lib/format";
+import { ProductTile } from "@/components/pos/product-tile";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { localizedName } from "@/lib/payment-labels";
 import type { CategorySummary, VariantSummary } from "@/lib/pos-types";
 
 const SEARCH_DEBOUNCE_MS = 250;
+/** Recent searches kept in memory. Repeating a search or category shows the last result at once. */
+const RESULT_CACHE_SIZE = 40;
 
 interface ProductPanelProps {
   onSelectVariant: (variant: VariantSummary) => void;
@@ -52,17 +52,28 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
     return () => clearTimeout(timer);
   }, [query]);
 
+  // Recent results, so a repeated search or category shows at once while a fresh copy loads in the background.
+  const cacheRef = useRef(new Map<string, VariantSummary[]>());
+
   useEffect(() => {
     const controller = new AbortController();
     const params = new URLSearchParams();
     if (debouncedQuery) params.set("q", debouncedQuery);
     if (categoryId) params.set("categoryId", categoryId);
+    const key = params.toString();
+
+    const cached = cacheRef.current.get(key);
+    if (cached) setVariants(cached);
 
     setLoading(true);
-    fetch(`/api/products?${params.toString()}`, { cache: "no-store", signal: controller.signal })
+    fetch(`/api/products?${key}`, { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error("products");
         const body: { variants: VariantSummary[] } = await res.json();
+        const cache = cacheRef.current;
+        cache.delete(key);
+        cache.set(key, body.variants);
+        if (cache.size > RESULT_CACHE_SIZE) cache.delete(cache.keys().next().value as string);
         setVariants(body.variants);
         setErrorKey(null);
       })
@@ -144,44 +155,10 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
             {t("pos.noMatch")}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
-            {variants.map((variant) => {
-              const outOfStock = variant.stockQuantity <= 0;
-              return (
-                <button
-                  key={variant.id}
-                  type="button"
-                  disabled={outOfStock}
-                  onClick={() => onSelectVariant(variant)}
-                  className="text-left disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <Card className="h-full overflow-hidden transition-colors hover:border-primary/60">
-                    <ProductThumb
-                      src={variant.product.imageUrl}
-                      alt={localizedName(locale, variant.product.name, variant.product.nameTh)}
-                      className="aspect-[4/3] w-full rounded-none"
-                    />
-                    <CardContent className="flex flex-col gap-2 p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="line-clamp-2 font-medium leading-snug">
-                          {localizedName(locale, variant.product.name, variant.product.nameTh)}
-                        </span>
-                        {outOfStock ? <Badge variant="destructive">{t("pos.soldOut")}</Badge> : null}
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-                        <Badge variant="outline">{t("pos.size", { size: variant.size })}</Badge>
-                        <Badge variant="outline">{variant.color}</Badge>
-                      </div>
-                      <div className="flex items-end justify-between gap-2">
-                        <span className="text-base font-semibold">{formatBaht(parseMoney(variant.price))}</span>
-                        <span className="text-xs text-muted-foreground">{t("pos.left", { count: variant.stockQuantity })}</span>
-                      </div>
-                      <span className="font-mono text-[11px] text-muted-foreground">{variant.sku}</span>
-                    </CardContent>
-                  </Card>
-                </button>
-              );
-            })}
+          <div className={`grid grid-cols-2 gap-3 transition-opacity xl:grid-cols-3 ${loading ? "opacity-70" : ""}`}>
+            {variants.map((variant) => (
+              <ProductTile key={variant.id} variant={variant} onSelect={onSelectVariant} />
+            ))}
           </div>
         )}
       </ScrollArea>

@@ -233,6 +233,25 @@ async function seedDemoCatalog(): Promise<number> {
   return created;
 }
 
+/** Starting categories for a fashion store. Created once; rename or add more in Back-Office > Categories & sizes. */
+const DEFAULT_CATEGORIES = [
+  { name: "Shirts", nameTh: "เสื้อ", slug: "shirts" },
+  { name: "Pants", nameTh: "กางเกง", slug: "pants" },
+  { name: "Dresses", nameTh: "เดรส", slug: "dresses" },
+  { name: "Outerwear", nameTh: "เสื้อคลุม", slug: "outerwear" },
+  { name: "Accessories", nameTh: "เครื่องประดับ", slug: "accessories" },
+];
+
+async function seedDefaultCategories(): Promise<void> {
+  for (const category of DEFAULT_CATEGORIES) {
+    await prisma.category.upsert({
+      where: { slug: category.slug },
+      update: {},
+      create: { name: category.name, nameTh: category.nameTh, slug: category.slug },
+    });
+  }
+}
+
 /** Sizes offered in the product form. Created once; sizes already used by variants are added too, and nothing is renamed or removed. */
 const DEFAULT_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "Free Size"];
 
@@ -261,7 +280,9 @@ async function seedSizes(): Promise<void> {
 async function main(): Promise<void> {
   await seedAccounts();
   await seedBags();
-  const demoCreated = await seedDemoCatalog();
+  await seedDefaultCategories();
+  // The demo catalogue is sample clothing for training only. Set SEED_DEMO=1 to create it.
+  const demoCreated = process.env.SEED_DEMO === "1" ? await seedDemoCatalog() : 0;
   await fillThaiNames();
   await seedSizes();
 
