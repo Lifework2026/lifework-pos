@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx tests/pricing.test.ts && tsx tests/catalog.test.ts && tsx tests/shift.test.ts && tsx tests/security.test.ts && tsx tests/finance.test.ts && tsx tests/excel.test.ts && tsx tests/master-data.test.ts && tsx tests/product-preview.test.ts",
+    "test": "tsx tests/pricing.test.ts && tsx tests/catalog.test.ts && tsx tests/shift.test.ts && tsx tests/security.test.ts && tsx tests/finance.test.ts && tsx tests/excel.test.ts && tsx tests/master-data.test.ts && tsx tests/product-preview.test.ts && tsx tests/text-codes.test.ts",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "check:env": "node scripts/check-env.mjs"

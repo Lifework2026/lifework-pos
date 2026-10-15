@@ -93,21 +93,46 @@ function cellToString(value: XlsxCell): string {
   return "";
 }
 
-/** Reads the first worksheet of an .xlsx file as a table of strings. */
-export async function parseXlsx(data: ArrayBuffer): Promise<string[][]> {
+/** A cell the workbook stored as a number, or as a formula whose result is a number. */
+function isNumericCell(value: XlsxCell): boolean {
+  if (typeof value === "number") return Number.isFinite(value);
+  if (value && typeof value === "object" && "result" in value) return isNumericCell((value as { result: unknown }).result);
+  return false;
+}
+
+export interface ParsedXlsx {
+  table: string[][];
+  /** Cells that were numbers in the workbook. Their text may have lost leading zeros already. */
+  numeric: { row: number; col: number }[];
+}
+
+/** Reads the first worksheet of an .xlsx file as a table of strings, and reports which cells were numbers. */
+export async function parseXlsxDetailed(data: ArrayBuffer): Promise<ParsedXlsx> {
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(data);
   const sheet = workbook.worksheets[0];
-  if (!sheet) return [];
+  if (!sheet) return { table: [], numeric: [] };
 
   const rows: string[][] = [];
+  const numeric: { row: number; col: number }[] = [];
   sheet.eachRow({ includeEmpty: false }, (row) => {
     const values = (row.values as XlsxCell[]).slice(1, MAX_COLUMNS + 1);
     const cells = Array.from({ length: values.length }, (_unused, index) => cellToString(values[index]));
-    if (cells.some((value) => value !== "")) rows.push(cells);
+    if (cells.some((value) => value !== "")) {
+      const index = rows.length;
+      values.forEach((value, col) => {
+        if (isNumericCell(value)) numeric.push({ row: index, col });
+      });
+      rows.push(cells);
+    }
   });
-  return rows;
+  return { table: rows, numeric };
+}
+
+/** Reads the first worksheet of an .xlsx file as a table of strings. */
+export async function parseXlsx(data: ArrayBuffer): Promise<string[][]> {
+  return (await parseXlsxDetailed(data)).table;
 }
 
 export interface XlsxOptions {

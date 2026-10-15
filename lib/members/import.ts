@@ -1,3 +1,4 @@
+import { cellText } from "@/lib/text-columns";
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { normalizePhone } from "@/lib/phone";
@@ -68,7 +69,7 @@ export function parseMemberTable(table: string[][]): { rows: MemberRow[]; issues
     const line = offset + 2;
     const get = (key: "phone" | "first" | "last" | "points") => {
       const index = cols[key];
-      return index === undefined ? "" : (cells[index] ?? "").trim();
+      return index === undefined ? "" : cellText(cells[index]);
     };
     const problems: string[] = [];
 

@@ -184,6 +184,7 @@ export function CatalogManager() {
           <CardHeader>
             <CardTitle className="text-base">{t("catalog.categories")}</CardTitle>
             <CardDescription>{t("catalog.categoriesHint")}</CardDescription>
+            <p className="text-xs text-muted-foreground">{t("catalog.codeHint")}</p>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div className="grid gap-2 sm:grid-cols-[8rem_1fr_1fr_auto]">

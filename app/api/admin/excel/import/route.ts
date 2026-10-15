@@ -13,6 +13,7 @@ import {
   type MasterRow,
 } from "@/lib/catalog/master-import";
 import { commitMembers, parseMemberTable, planMembers } from "@/lib/members/import";
+import { numericTextIssues } from "@/lib/text-columns";
 import { readUploadedTable } from "@/lib/upload";
 
 export const dynamic = "force-dynamic";
@@ -156,7 +157,9 @@ export async function POST(request: Request): Promise<Response> {
   if ("response" in read) return read.response;
 
   const parsed = handler.parse(read.table);
-  if (parsed.issues.length > 0) return blocked(parsed.issues, mode, { unknownColumns: parsed.unknownColumns });
+  // Numbers in code, barcode or phone cells are refused first: their leading zeros may already be gone.
+  const issues = [...numericTextIssues(read.table, read.numeric), ...parsed.issues];
+  if (issues.length > 0) return blocked(issues, mode, { unknownColumns: parsed.unknownColumns });
 
   try {
     if (mode === "preview") {

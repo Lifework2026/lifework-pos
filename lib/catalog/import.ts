@@ -10,6 +10,7 @@
  * The import is all-or-nothing: any issue blocks the whole file.
  */
 
+import { cellText } from "@/lib/text-columns";
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { randomStoreEan13 } from "@/lib/barcode";
@@ -173,7 +174,7 @@ export function parseImportTable(table: string[][]): ParsedImport {
     const line = offset + 2;
     const get = (field: Field): string => {
       const index = columnOf[field];
-      return index === undefined ? "" : (cells[index] ?? "").trim();
+      return index === undefined ? "" : cellText(cells[index]);
     };
     const problems: string[] = [];
 

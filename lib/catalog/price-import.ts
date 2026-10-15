@@ -1,3 +1,4 @@
+import { cellText } from "@/lib/text-columns";
 import { Prisma } from "@prisma/client";
 import { bahtToSatang, PricingError, satangToDecimal } from "@/lib/pricing";
 import { isValidBarcode, BARCODE_RULE_MESSAGE } from "@/lib/barcode-rules";
@@ -67,7 +68,7 @@ export function parsePriceTable(table: string[][]): { rows: PriceRow[]; issues: 
     const line = offset + 2;
     const get = (field: Field) => {
       const index = columnOf[field];
-      return index === undefined ? "" : (cells[index] ?? "").trim();
+      return index === undefined ? "" : cellText(cells[index]);
     };
     const problems: string[] = [];
     const barcode = get("barcode");

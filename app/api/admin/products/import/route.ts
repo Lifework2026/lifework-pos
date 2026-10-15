@@ -13,6 +13,7 @@ import {
   type ImportRow,
 } from "@/lib/catalog/import";
 import { buildProductPreview, describeColumns } from "@/lib/catalog/import-preview";
+import { numericTextIssues } from "@/lib/text-columns";
 import { readUploadedTable } from "@/lib/upload";
 
 export const dynamic = "force-dynamic";
@@ -107,11 +108,13 @@ export async function POST(request: Request): Promise<Response> {
   if ("response" in read) return read.response;
 
   const parsed = parseImportTable(read.table);
-  if (parsed.issues.length > 0) {
+  // Numbers in code, barcode or SKU cells are refused first: their leading zeros may already be gone.
+  const issues = [...numericTextIssues(read.table, read.numeric), ...parsed.issues];
+  if (issues.length > 0) {
     const body = {
       ok: false,
-      issueCount: parsed.issues.length,
-      issues: parsed.issues.slice(0, ISSUE_LIMIT),
+      issueCount: issues.length,
+      issues: issues.slice(0, ISSUE_LIMIT),
       unknownColumns: parsed.unknownColumns,
     };
     return mode === "commit" ? Response.json({ error: "IMPORT_HAS_ISSUES", message: "Fix the problems in the file and try again.", ...body }, { status: 422 }) : Response.json(body);

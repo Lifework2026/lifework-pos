@@ -1,3 +1,4 @@
+import { cellText } from "@/lib/text-columns";
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { CODE_PATTERN, CODE_RULE_MESSAGE } from "@/lib/master-codes";
@@ -72,13 +73,14 @@ export function parseMasterTable(
   const rows: MasterRow[] = [];
   dataRows.forEach((cells, offset) => {
     const line = offset + 2;
-    const code = (cells[codeCol!] ?? "").trim().toUpperCase();
-    const name = (cells[nameCol!] ?? "").trim();
+    const code = cellText(cells[codeCol!]).toUpperCase();
+    const name = cellText(cells[nameCol!]);
     const problems: string[] = [];
     if (!code) problems.push(`${label}_Code is required.`);
     else if (code.startsWith(EXAMPLE_PREFIX)) problems.push("This is the example row from the template. Delete it, then upload again.");
     else if (!CODE_PATTERN.test(code)) problems.push(`${label}_Code '${code}': ${CODE_RULE_MESSAGE}`);
-    if (!name) problems.push(`${label}_Name is required.`);
+    if (name.startsWith("EXAMPLE ")) problems.push("This is the example row from the template. Delete it, then upload again.");
+    else if (!name) problems.push(`${label}_Name is required.`);
     else if (name.length > LIMITS[kind].name) problems.push(`${label}_Name is longer than ${LIMITS[kind].name} characters.`);
     if (problems.length > 0) {
       for (const message of problems) issues.push({ line, message });

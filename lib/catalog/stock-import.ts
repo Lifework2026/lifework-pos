@@ -1,3 +1,4 @@
+import { cellText } from "@/lib/text-columns";
 import { Prisma, type MovementType, type StockReason } from "@prisma/client";
 import { isValidBarcode, BARCODE_RULE_MESSAGE } from "@/lib/barcode-rules";
 
@@ -76,7 +77,7 @@ export function parseStockTable(table: string[][]): { rows: StockRow[]; issues: 
     const line = offset + 2;
     const get = (field: "barcode" | "quantity" | "reason") => {
       const index = columns[field];
-      return index === undefined ? "" : (cells[index] ?? "").trim();
+      return index === undefined ? "" : cellText(cells[index]);
     };
     const problems: string[] = [];
     const barcode = get("barcode");
