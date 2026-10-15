@@ -28,7 +28,6 @@ function describe(plan: ImportPlan, rows: ImportRow[]) {
   const nameBySku = new Map(rows.map((row) => [row.sku, row.name]));
   return {
     summary: plan.summary,
-    newCategories: plan.categories.map((c) => c.name).slice(0, 30),
     newProducts: plan.products.map((p) => p.name).slice(0, 30),
     newSizes: plan.sizes.slice(0, 30),
     skipped: plan.skipped.slice(0, 20),

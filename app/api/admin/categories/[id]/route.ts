@@ -2,10 +2,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
 import { readBody, requireManager } from "@/lib/api-helpers";
+import { catalogCodeSchema } from "@/lib/master-schema";
 
 export const dynamic = "force-dynamic";
 
 const patchSchema = z.object({
+  code: catalogCodeSchema.optional(),
   name: z.string().trim().min(1, "Enter a category name.").max(80).optional(),
   nameTh: z.string().trim().max(80).nullable().optional(),
 });
@@ -20,6 +22,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const existing = await prisma.category.findUnique({ where: { id: params.id }, select: { id: true } });
   if (!existing) return apiError(404, "NOT_FOUND", "Category not found.");
 
+  if (body.data.code) {
+    const sameCode = await prisma.category.findFirst({ where: { code: body.data.code, NOT: { id: params.id } }, select: { id: true } });
+    if (sameCode) return apiError(409, "CODE_EXISTS", `Code ${body.data.code} is already used by another category.`);
+  }
+
   if (body.data.name) {
     const duplicate = await prisma.category.findFirst({
       where: { name: { equals: body.data.name, mode: "insensitive" }, NOT: { id: params.id } },
@@ -31,10 +38,11 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const category = await prisma.category.update({
     where: { id: params.id },
     data: {
+      ...(body.data.code ? { code: body.data.code } : {}),
       ...(body.data.name ? { name: body.data.name } : {}),
       ...(body.data.nameTh !== undefined ? { nameTh: body.data.nameTh || null } : {}),
     },
-    select: { id: true, name: true, nameTh: true, slug: true },
+    select: { id: true, code: true, name: true, nameTh: true, slug: true },
   });
   return Response.json({ category });
 }

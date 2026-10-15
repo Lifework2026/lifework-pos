@@ -1,10 +1,11 @@
-// Excel bulk actions: templates, the price and stock importers, and the sample-row guard. Run with: npx tsx tests/excel.test.ts
+// Excel bulk actions: templates, the master-data codes, the importers and the sample-row guard.
+// Run with: npx tsx tests/excel.test.ts
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { buildTemplateWorkbook, NEW_PRODUCT_HEADER, TEMPLATES } from "../lib/excel-templates";
+import { buildTemplateWorkbook, TEMPLATES, type MasterData } from "../lib/excel-templates";
 import { parsePriceTable } from "../lib/catalog/price-import";
 import { movementFor, parseStockTable } from "../lib/catalog/stock-import";
-import { parseImportTable } from "../lib/catalog/import";
+import { parseImportTable, planImport, TEMPLATE_HEADER, type ImportRow } from "../lib/catalog/import";
 
 const require = createRequire(__filename);
 const ExcelJS = require("exceljs");
@@ -16,24 +17,81 @@ async function test(name: string, fn: () => void | Promise<void>): Promise<void>
   console.log(`PASS  ${name}`);
 }
 
-async function readWorkbook(type: "A" | "B" | "C") {
-  const buffer = await buildTemplateWorkbook(type);
+const MASTER: MasterData = {
+  categories: [
+    { code: "CAT-SHIRT", name: "Shirts", nameTh: "เสื้อ" },
+    { code: "CAT-PANT", name: "Pants", nameTh: "กางเกง" },
+  ],
+  colors: [
+    { code: "COL-BLK", name: "Black", nameTh: "ดำ" },
+    { code: "COL-WHT", name: "White", nameTh: "ขาว" },
+  ],
+};
+
+async function readWorkbook(type: "A" | "B" | "C", master?: MasterData) {
+  const buffer = await buildTemplateWorkbook(type, master);
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
   return wb;
 }
 
+/** A stand-in for the Prisma client: returns fixed master data and no existing products. */
+function fakeDb(): Parameters<typeof planImport>[0] {
+  const empty = async () => [];
+  return {
+    productVariant: { findMany: empty },
+    product: { findMany: empty },
+    size: { findMany: empty },
+    category: { findMany: async () => [{ id: "cat-shirt", code: "CAT-SHIRT", name: "Shirts" }] },
+    color: { findMany: async () => [{ id: "col-blk", code: "COL-BLK", name: "Black" }] },
+  } as unknown as Parameters<typeof planImport>[0];
+}
+
+const options = { onExisting: "skip" as const, applyStock: false };
+function row(overrides: Partial<ImportRow>): ImportRow {
+  return {
+    line: 2,
+    sku: "LW-1",
+    name: "Tee",
+    nameTh: null,
+    categoryCode: "CAT-SHIRT",
+    colorCode: "COL-BLK",
+    size: "M",
+    priceSatang: 39_000,
+    costSatang: null,
+    stock: 0,
+    barcode: null,
+    promoTag: null,
+    brand: null,
+    description: null,
+    ...overrides,
+  };
+}
+
 (async () => {
   // ------------------------------------------------------------ templates
   await test("template A: row 1 is the exact header, row 2 is the example in the same order", async () => {
-    const wb = await readWorkbook("A");
+    const wb = await readWorkbook("A", MASTER);
     const data = wb.getWorksheet("Data");
-    const header = data.getRow(1).values.slice(1);
-    assert.deepEqual(header, NEW_PRODUCT_HEADER);
+    assert.deepEqual(data.getRow(1).values.slice(1), TEMPLATE_HEADER);
     const example = data.getRow(2).values.slice(1);
-    assert.equal(example.length, NEW_PRODUCT_HEADER.length);
+    assert.equal(example.length, TEMPLATE_HEADER.length);
     assert.equal(example[0], "EXAMPLE-0000001");
-    assert.ok(wb.getWorksheet("Instructions"), "instructions sheet");
+    assert.equal(example[TEMPLATE_HEADER.indexOf("Category_Code")], "CAT-SHIRT", "example uses a live category code");
+    assert.equal(example[TEMPLATE_HEADER.indexOf("Color_Code")], "COL-BLK", "example uses a live colour code");
+  });
+
+  await test("template A lists the master data codes on its own sheet", async () => {
+    const wb = await readWorkbook("A", MASTER);
+    const codes = wb.getWorksheet("Master_Data_Codes");
+    assert.ok(codes, "Master_Data_Codes sheet");
+    const rows: unknown[][] = [];
+    codes.eachRow((r: { values: unknown[] }, index: number) => {
+      if (index > 1) rows.push(r.values.slice(1));
+    });
+    assert.deepEqual(rows[0], ["Category", "CAT-SHIRT", "Shirts", "เสื้อ"]);
+    assert.ok(rows.some((r) => r[0] === "Color" && r[1] === "COL-BLK"));
+    assert.equal(rows.length, MASTER.categories.length + MASTER.colors.length);
   });
 
   await test("template B and C: headers match the importers, and row 2 is an example", async () => {
@@ -45,21 +103,19 @@ async function readWorkbook(type: "A" | "B" | "C") {
     assert.equal(c.getWorksheet("Data").getRow(2).getCell(3).value, "Damage");
   });
 
-  await test("each template is a real .xlsx file (zip signature)", async () => {
+  await test("each template is a real .xlsx file (zip signature) and has instructions", async () => {
     for (const type of ["A", "B", "C"] as const) {
-      const buffer = await buildTemplateWorkbook(type);
+      const buffer = await buildTemplateWorkbook(type, MASTER);
       assert.equal(buffer[0], 0x50);
       assert.equal(buffer[1], 0x4b);
     }
+    assert.ok(TEMPLATES.A.instructions.some((line) => /Category_Code/.test(line)));
     assert.ok(TEMPLATES.A.instructions.length >= 5 && TEMPLATES.B.instructions.length >= 4 && TEMPLATES.C.instructions.length >= 5);
   });
 
   // ------------------------------------------------------------ sample guard
   await test("the example row is refused by every importer, so an unedited template cannot change stock", () => {
-    const a = parseImportTable([
-      ["Barcode", "SKU", "Name_TH", "Name_EN", "Category", "Size", "Price", "Cost", "Initial_Stock", "Promo_Tag"],
-      ["EXAMPLE-0000001", "EXAMPLE-TEE-M", "", "Example Tee", "Shirts", "M", "390", "180", "10", "HOT"],
-    ]);
+    const a = parseImportTable([TEMPLATE_HEADER, ["EXAMPLE-0000001", "EXAMPLE-TEE-M", "", "Example Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "180", "10", "HOT"]]);
     assert.ok(a.issues.some((i) => /example row/.test(i.message)));
     assert.equal(a.rows.length, 0);
     const b = parsePriceTable([["Barcode", "New_Price", "Promo_Tag"], ["EXAMPLE-0000001", "350", "SALE"]]);
@@ -68,28 +124,58 @@ async function readWorkbook(type: "A" | "B" | "C") {
     assert.ok(c.issues.some((i) => /example row/.test(i.message)));
   });
 
-  // ------------------------------------------------------------ template A: cost and promo tag
-  await test("template A columns are read: Name_EN, Cost, Initial_Stock and Promo_Tag", () => {
+  // ------------------------------------------------------------ template A: codes
+  await test("template A reads the cost and promo tag and resolves codes to their master record", () => {
     const result = parseImportTable([
-      ["Barcode", "SKU", "Name_TH", "Name_EN", "Category", "Size", "Price", "Cost", "Initial_Stock", "Promo_Tag"],
-      ["LW265TS99035XL", "LW-TEE-M", "เสื้อยืด", "Cotton Tee", "Shirts", "M", "390", "180.50", "10", "HOT"],
+      TEMPLATE_HEADER,
+      ["LW265TS99035XL", "LW-TEE-M", "เสื้อยืด", "Cotton Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "180.50", "10", "HOT"],
     ]);
     assert.equal(result.issues.length, 0, JSON.stringify(result.issues));
-    const row = result.rows[0];
-    assert.equal(row.name, "Cotton Tee");
-    assert.equal(row.nameTh, "เสื้อยืด");
-    assert.equal(row.costSatang, 18050);
-    assert.equal(row.promoTag, "HOT");
-    assert.equal(row.stock, 10);
+    const r = result.rows[0];
+    assert.equal(r.name, "Cotton Tee");
+    assert.equal(r.categoryCode, "CAT-SHIRT");
+    assert.equal(r.colorCode, "COL-BLK");
+    assert.equal(r.costSatang, 18050);
+    assert.equal(r.promoTag, "HOT");
+    assert.equal(r.stock, 10);
   });
 
   await test("template A rejects a bad cost and an over-long promo tag", () => {
     const result = parseImportTable([
-      ["SKU", "Name", "Category", "Size", "Price", "Cost", "Promo_Tag"],
-      ["LW-1", "Tee", "Shirts", "M", "390", "1.234", "X".repeat(31)],
+      ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price", "Cost", "Promo_Tag"],
+      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "1.234", "X".repeat(31)],
     ]);
     assert.ok(result.issues.some((i) => /Cost/.test(i.message)));
     assert.ok(result.issues.some((i) => /Promo_Tag/.test(i.message)));
+  });
+
+  await test("template A: a category code that is not in the database is rejected, naming the code", async () => {
+    const plan = await planImport(fakeDb(), [row({ line: 2, categoryCode: "CAT-01" })], options);
+    assert.equal(plan.variants.length, 0);
+    assert.ok(plan.issues.some((i) => i.line === 2 && i.message === "Category Code 'CAT-01' not found. Check the Master_Data_Codes sheet."), JSON.stringify(plan.issues));
+  });
+
+  await test("template A: a colour code that is not in the database is rejected, naming the code", async () => {
+    const plan = await planImport(fakeDb(), [row({ line: 3, colorCode: "COL-XYZ" })], options);
+    assert.equal(plan.variants.length, 0);
+    assert.ok(plan.issues.some((i) => i.line === 3 && i.message === "Color Code 'COL-XYZ' not found. Check the Master_Data_Codes sheet."));
+  });
+
+  await test("template A: a valid code row is planned with the colour id and name", async () => {
+    const plan = await planImport(fakeDb(), [row({ line: 2 })], options);
+    assert.equal(plan.issues.length, 0, JSON.stringify(plan.issues));
+    assert.equal(plan.variants.length, 1);
+    assert.equal(plan.variants[0].colorId, "col-blk");
+    assert.equal(plan.variants[0].colorName, "Black");
+    assert.equal(plan.products[0].categoryId, "cat-shirt");
+  });
+
+  await test("template A: one bad code does not stop the valid rows, which are still planned", async () => {
+    const plan = await planImport(fakeDb(), [row({ line: 2, sku: "LW-1" }), row({ line: 3, sku: "LW-2", categoryCode: "CAT-99" })], options);
+    assert.equal(plan.variants.length, 1);
+    assert.equal(plan.variants[0].sku, "LW-1");
+    assert.equal(plan.issues.length, 1);
+    assert.equal(plan.issues[0].line, 3);
   });
 
   // ------------------------------------------------------------ template B

@@ -17,7 +17,6 @@ interface Issue {
 
 interface Summary {
   rows: number;
-  newCategories: number;
   newProducts: number;
   newVariants: number;
   updatedVariants: number;
@@ -32,7 +31,6 @@ interface PreviewResponse {
   issues: Issue[];
   unknownColumns?: string[];
   summary?: Summary;
-  newCategories?: string[];
   newProducts?: string[];
   newSizes?: string[];
   skipped?: { line: number; sku: string }[];
@@ -270,18 +268,11 @@ export function ImportPanel() {
               <Stat label={t("import.sumRows")} value={summary.rows} />
               <Stat label={t("import.sumNewProducts")} value={summary.newProducts} />
               <Stat label={t("import.sumNewVariants")} value={summary.newVariants} />
-              <Stat label={t("import.sumNewCategories")} value={summary.newCategories} />
               <Stat label={t("import.sumNewSizes")} value={summary.newSizes} />
               <Stat label={t("import.sumUpdated")} value={summary.updatedVariants} />
               <Stat label={t("import.sumSkipped")} value={summary.skippedVariants} />
               <Stat label={t("import.sumStock")} value={summary.stockMovements} />
             </dl>
-
-            {preview?.newCategories && preview.newCategories.length > 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("import.sumNewCategories")}: {preview.newCategories.join(", ")}
-              </p>
-            ) : null}
 
             {preview?.updates && preview.updates.length > 0 ? (
               <div className="text-sm">

@@ -110,6 +110,14 @@ The Print button renders the receipt into a separate `#print-root` element and t
 2. In the browser's print dialog choose that printer, scale 100%, margins none, and turn off headers and footers. The page already asks for no margin.
 3. For one-click printing, start Chrome or Edge with `--kiosk-printing` so the dialog is skipped.
 
+## Master data and catalog codes
+
+Categories and colours have a **code** that spreadsheets use, for example `CAT-SHIRT` or `COL-BLK`. Codes are unique, upper case, 2 to 20 letters, digits or dashes. Edit them under **สินค้า → หมวดหมู่และไซซ์** (categories) and **สี** (colours).
+
+- Template A refers to a category and a colour only by code (`Category_Code`, `Color_Code`). Both are required. A code that is not in the database refuses that row, and the message names the code.
+- Template A includes a **Master_Data_Codes** sheet listing every current category and colour, so the codes can be copied exactly.
+- Products store a link to their colour. Renaming a colour renames it on every variant. A colour or category still in use cannot be deleted.
+
 ## Excel bulk actions
 
 **Excel bulk actions** (managers) has three spreadsheets. Download each template, fill it in, press **Check file**, then **Import**. Nothing is saved until the check passes.

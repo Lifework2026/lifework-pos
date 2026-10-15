@@ -1,9 +1,10 @@
 /**
- * Bulk product import from a table of strings (parsed from .xlsx or .csv).
+ * Template A: bulk creation of new products from a spreadsheet, keyed by master-data codes.
  *
- *  1. parseImportTable   pure: header matching and per-row validation
- *  2. planImport         reads the database: decides what is new, updated, skipped or conflicting
- *  3. commitImport       writes the plan in batches (createMany) inside the caller's transaction
+ *  1. parseImportTable   pure: header matching and per-row validation. Category_Code and Color_Code are required.
+ *  2. planImport         reads the database. Each code must match a master record exactly, or that row is rejected
+ *                        with a clear message such as "Category Code 'CAT-01' not found".
+ *  3. commitImport       writes the plan in batches (createMany) inside the caller's transaction.
  *
  * Commit re-plans inside the transaction, so nothing can change between preview and write.
  * The import is all-or-nothing: any issue blocks the whole file.
@@ -15,95 +16,84 @@ import { randomStoreEan13 } from "@/lib/barcode";
 import { BARCODE_RULE_MESSAGE, isValidBarcode } from "@/lib/barcode-rules";
 import { bahtToSatang, PricingError, satangToDecimal } from "@/lib/pricing";
 import { slugify } from "@/lib/slug";
+import { ensureSizes } from "@/lib/catalog/sizes";
+import { CODE_PATTERN, CODE_RULE_MESSAGE } from "@/lib/master-codes";
 
 export const MAX_IMPORT_ROWS = 2000;
-export const DEFAULT_COLOR = "Standard";
 
-/** Column titles written into the downloadable template. Order matters for the template only. */
+/** Column titles of Template A, in order. Category and colour are codes from the master-data sheet. */
 export const TEMPLATE_HEADER = [
+  "Barcode",
   "SKU",
-  "Name",
-  "Category",
+  "Name_TH",
+  "Name_EN",
+  "Category_Code",
+  "Color_Code",
   "Size",
   "Price",
-  "Stock",
-  "Color",
-  "Barcode",
-  "Brand",
-  "Name (Thai)",
-  "Category (Thai)",
-  "Description",
+  "Cost",
+  "Initial_Stock",
+  "Promo_Tag",
 ];
 
-export const TEMPLATE_EXAMPLE_ROWS: string[][] = [
-  ["TEE-WHT-S", "Basic Cotton Tee", "Shirts", "S", "390", "10", "White", "", "Lifework", "เสื้อยืดคอตตอนเบสิก", "เสื้อ", "Soft everyday tee"],
-  ["TEE-WHT-M", "Basic Cotton Tee", "Shirts", "M", "390", "15", "White", "", "Lifework", "เสื้อยืดคอตตอนเบสิก", "เสื้อ", ""],
-  ["TEE-BLK-M", "Basic Cotton Tee", "Shirts", "M", "390", "12", "Black", "", "Lifework", "เสื้อยืดคอตตอนเบสิก", "เสื้อ", ""],
-  ["PNT-KHK-30", "Straight Chino", "Pants", "30", "1190", "8", "Khaki", "", "Lifework", "กางเกงชิโนทรงตรง", "กางเกง", ""],
-];
+const EXAMPLE_PREFIX = "EXAMPLE-";
 
 type Field =
   | "sku"
   | "name"
   | "nameTh"
-  | "category"
-  | "categoryTh"
+  | "categoryCode"
+  | "colorCode"
   | "size"
   | "price"
-  | "stock"
-  | "color"
-  | "barcode"
-  | "brand"
-  | "description"
   | "cost"
-  | "promoTag";
+  | "stock"
+  | "barcode"
+  | "promoTag"
+  | "brand"
+  | "description";
 
 const HEADER_ALIASES: Record<string, Field> = {
   sku: "sku",
+  barcode: "barcode",
   name: "name",
+  nameen: "name",
   productname: "name",
-  namethai: "nameTh",
   nameth: "nameTh",
+  namethai: "nameTh",
   thainame: "nameTh",
-  category: "category",
-  categoryname: "category",
-  categorythai: "categoryTh",
-  categoryth: "categoryTh",
+  categorycode: "categoryCode",
+  colorcode: "colorCode",
   size: "size",
   price: "price",
   unitprice: "price",
+  cost: "cost",
+  unitcost: "cost",
   stock: "stock",
   qty: "stock",
   quantity: "stock",
   initialstock: "stock",
-  nameen: "name",
-  cost: "cost",
-  unitcost: "cost",
   promotag: "promoTag",
   promo: "promoTag",
-  color: "color",
-  colour: "color",
-  barcode: "barcode",
   brand: "brand",
   description: "description",
 };
 
-const REQUIRED_FIELDS: Field[] = ["sku", "name", "category", "size", "price"];
+const REQUIRED_FIELDS: Field[] = ["sku", "name", "categoryCode", "colorCode", "size", "price"];
 const FIELD_LABELS: Record<Field, string> = {
   sku: "SKU",
-  name: "Name",
-  nameTh: "Name (Thai)",
-  category: "Category",
-  categoryTh: "Category (Thai)",
+  name: "Name_EN",
+  nameTh: "Name_TH",
+  categoryCode: "Category_Code",
+  colorCode: "Color_Code",
   size: "Size",
   price: "Price",
-  stock: "Stock",
-  color: "Color",
+  cost: "Cost",
+  stock: "Initial_Stock",
   barcode: "Barcode",
+  promoTag: "Promo_Tag",
   brand: "Brand",
   description: "Description",
-  cost: "Cost",
-  promoTag: "Promo_Tag",
 };
 
 export interface ImportRow {
@@ -112,20 +102,18 @@ export interface ImportRow {
   sku: string;
   name: string;
   nameTh: string | null;
-  category: string;
-  categoryTh: string | null;
+  categoryCode: string;
+  colorCode: string;
   size: string;
-  color: string;
   priceSatang: number;
-  /** null when the Stock cell was blank. */
+  /** Unit cost in satang, or null when blank. */
+  costSatang: number | null;
+  /** null when the Initial_Stock cell was blank. */
   stock: number | null;
   barcode: string | null;
+  promoTag: string | null;
   brand: string | null;
   description: string | null;
-  /** Unit cost in satang, or null when the Cost cell was blank. */
-  costSatang: number | null;
-  /** Short sales tag, or null when blank. */
-  promoTag: string | null;
 }
 
 export interface ImportIssue {
@@ -150,10 +138,9 @@ export function parseImportTable(table: string[][]): ParsedImport {
     return { rows: [], issues: [{ line: 1, message: "The file is empty." }], unknownColumns: [] };
   }
 
-  const headerCells = table[0];
   const columnOf: Partial<Record<Field, number>> = {};
   const unknownColumns: string[] = [];
-  headerCells.forEach((cell, index) => {
+  table[0].forEach((cell, index) => {
     if (!cell.trim()) return;
     const field = HEADER_ALIASES[normalizeHeader(cell)];
     if (!field) unknownColumns.push(cell);
@@ -191,24 +178,24 @@ export function parseImportTable(table: string[][]): ParsedImport {
     const problems: string[] = [];
 
     const sku = get("sku").toUpperCase();
-    // The sample row in the downloaded template starts with EXAMPLE-. It must be deleted, never imported.
-    if (sku.startsWith("EXAMPLE-")) problems.push("This is the example row from the template. Delete it, then upload again.");
-    if (!/^[A-Z0-9][A-Z0-9._-]{0,39}$/.test(sku)) problems.push("SKU must be 1 to 40 letters, digits, dots, dashes or underscores.");
+    if (sku.startsWith(EXAMPLE_PREFIX)) problems.push("This is the example row from the template. Delete it, then upload again.");
+    else if (!/^[A-Z0-9][A-Z0-9._-]{0,39}$/.test(sku)) problems.push("SKU must be 1 to 40 letters, digits, dots, dashes or underscores.");
 
     const name = get("name");
-    if (!name) problems.push("Name is required.");
-    else if (name.length > 150) problems.push("Name is longer than 150 characters.");
+    if (!name) problems.push("Name_EN is required.");
+    else if (name.length > 150) problems.push("Name_EN is longer than 150 characters.");
 
-    const category = get("category");
-    if (!category) problems.push("Category is required.");
-    else if (category.length > 80) problems.push("Category is longer than 80 characters.");
+    const categoryCode = get("categoryCode").toUpperCase();
+    if (!categoryCode) problems.push("Category_Code is required.");
+    else if (!CODE_PATTERN.test(categoryCode)) problems.push(`Category_Code '${categoryCode}': ${CODE_RULE_MESSAGE}`);
+
+    const colorCode = get("colorCode").toUpperCase();
+    if (!colorCode) problems.push("Color_Code is required.");
+    else if (!CODE_PATTERN.test(colorCode)) problems.push(`Color_Code '${colorCode}': ${CODE_RULE_MESSAGE}`);
 
     const size = get("size");
     if (!size) problems.push("Size is required.");
     else if (size.length > 20) problems.push("Size is longer than 20 characters.");
-
-    const color = get("color") || DEFAULT_COLOR;
-    if (color.length > 40) problems.push("Color is longer than 40 characters.");
 
     let priceSatang = 0;
     const priceText = get("price").replace(/[,฿\s]/g, "");
@@ -225,25 +212,8 @@ export function parseImportTable(table: string[][]): ParsedImport {
       }
     }
 
-    let stock: number | null = null;
-    const stockText = get("stock");
-    if (stockText !== "") {
-      if (!/^\d+(\.0+)?$/.test(stockText)) problems.push("Stock must be a whole number of 0 or more.");
-      else {
-        stock = Math.trunc(Number(stockText));
-        if (stock > 100_000) problems.push("Stock is too large (maximum 100000).");
-      }
-    }
-
-    const barcodeText = get("barcode");
-    let barcode: string | null = null;
-    if (barcodeText) {
-      if (!isValidBarcode(barcodeText)) problems.push(BARCODE_RULE_MESSAGE);
-      else barcode = barcodeText;
-    }
-
     let costSatang: number | null = null;
-    const costText = get("cost").replace(/[,฿s]/g, "");
+    const costText = get("cost").replace(/[,฿\s]/g, "");
     if (costText) {
       try {
         costSatang = bahtToSatang(costText);
@@ -254,9 +224,28 @@ export function parseImportTable(table: string[][]): ParsedImport {
       }
     }
 
+    let stock: number | null = null;
+    const stockText = get("stock");
+    if (stockText !== "") {
+      if (!/^\d+(\.0+)?$/.test(stockText)) problems.push("Initial_Stock must be a whole number of 0 or more.");
+      else {
+        stock = Math.trunc(Number(stockText));
+        if (stock > 100_000) problems.push("Initial_Stock is too large (maximum 100000).");
+      }
+    }
+
+    const barcodeText = get("barcode");
+    let barcode: string | null = null;
+    if (barcodeText) {
+      if (!isValidBarcode(barcodeText)) problems.push(BARCODE_RULE_MESSAGE);
+      else barcode = barcodeText;
+    }
+
     const promoTag = get("promoTag") || null;
     if (promoTag && promoTag.length > 30) problems.push("Promo_Tag is longer than 30 characters.");
 
+    const nameTh = get("nameTh") || null;
+    if (nameTh && nameTh.length > 150) problems.push("Name_TH is longer than 150 characters.");
     const brand = get("brand") || null;
     if (brand && brand.length > 80) problems.push("Brand is longer than 80 characters.");
     const description = get("description") || null;
@@ -271,29 +260,28 @@ export function parseImportTable(table: string[][]): ParsedImport {
       line,
       sku,
       name,
-      nameTh: get("nameTh") || null,
-      category,
-      categoryTh: get("categoryTh") || null,
+      nameTh,
+      categoryCode,
+      colorCode,
       size,
-      color,
       priceSatang,
+      costSatang,
       stock,
       barcode,
+      promoTag,
       brand,
       description,
-      costSatang,
-      promoTag,
     });
   });
 
-  // Duplicates inside the file.
+  // Duplicates inside the file. A product is identified by its name, so its rows must agree on the category.
   const skuLine = new Map<string, number>();
   const barcodeLine = new Map<string, number>();
   const variantLine = new Map<string, number>();
-  const productCategory = new Map<string, { category: string; line: number }>();
+  const productCategory = new Map<string, { code: string; line: number }>();
   for (const row of rows) {
     const firstSku = skuLine.get(row.sku);
-    if (firstSku !== undefined) issues.push({ line: row.line, message: `SKU ${row.sku} already appears on line ${firstSku}.` });
+    if (firstSku !== undefined) issues.push({ line: row.line, message: `SKU ${row.sku} is already on line ${firstSku}.` });
     else skuLine.set(row.sku, row.line);
 
     if (row.barcode) {
@@ -302,42 +290,31 @@ export function parseImportTable(table: string[][]): ParsedImport {
       else barcodeLine.set(row.barcode, row.line);
     }
 
-    const productKey = slugify(row.name);
-    const variantKey = `${productKey}|${row.size.toLowerCase()}|${row.color.toLowerCase()}`;
+    const variantKey = `${slugify(row.name)}|${row.size.toLowerCase()}|${row.colorCode}`;
     const firstVariant = variantLine.get(variantKey);
-    if (firstVariant !== undefined) {
-      issues.push({ line: row.line, message: `${row.name} in size ${row.size} / ${row.color} already appears on line ${firstVariant}.` });
-    } else {
-      variantLine.set(variantKey, row.line);
-    }
+    if (firstVariant !== undefined) issues.push({ line: row.line, message: `${row.name} in size ${row.size} / ${row.colorCode} is already on line ${firstVariant}.` });
+    else variantLine.set(variantKey, row.line);
 
-    const seen = productCategory.get(productKey);
-    if (seen && seen.category.toLowerCase() !== row.category.toLowerCase()) {
-      issues.push({ line: row.line, message: `${row.name} is listed under "${seen.category}" on line ${seen.line} and "${row.category}" here.` });
-    } else if (!seen) {
-      productCategory.set(productKey, { category: row.category, line: row.line });
+    const slug = slugify(row.name);
+    const claimed = productCategory.get(slug);
+    if (claimed && claimed.code !== row.categoryCode) {
+      issues.push({ line: row.line, message: `${row.name} is listed under ${claimed.code} on line ${claimed.line} and under ${row.categoryCode} here. Use one category.` });
+    } else if (!claimed) {
+      productCategory.set(slug, { code: row.categoryCode, line: row.line });
     }
   }
 
-  issues.sort((a, b) => a.line - b.line);
   return { rows, issues, unknownColumns };
 }
 
 export interface ImportOptions {
-  /** What to do when a SKU already exists. */
+  /** What to do when a SKU already exists: keep it, or update its price, cost, promo tag and photo details. */
   onExisting: "skip" | "update";
-  /** For existing SKUs, set stock to the file's Stock value (written to the ledger as an adjustment). */
+  /** For existing SKUs, set stock to the file's Initial_Stock value (written to the ledger as an adjustment). */
   applyStock: boolean;
 }
 
-interface PlannedCategory {
-  id: string;
-  name: string;
-  nameTh: string | null;
-  slug: string;
-}
-
-interface PlannedProduct {
+export interface PlannedProduct {
   id: string;
   slug: string;
   name: string;
@@ -348,36 +325,36 @@ interface PlannedProduct {
   promoTag: string | null;
 }
 
-interface PlannedVariant {
+export interface PlannedVariant {
   id: string;
   productId: string;
   sku: string;
   barcode: string;
   size: string;
-  color: string;
+  colorId: string;
+  colorName: string;
   priceSatang: number;
   costSatang: number | null;
   stock: number;
   line: number;
 }
 
-interface PlannedUpdate {
+export interface PlannedUpdate {
   line: number;
   variantId: string;
   productId: string;
   sku: string;
   priceBeforeSatang: number;
   priceAfterSatang: number;
-  barcode: string | null;
   /** null leaves the cost unchanged. */
   costAfterSatang: number | null;
+  barcode: string | null;
   productPatch: { nameTh?: string; brand?: string; description?: string; promoTag?: string };
   stockChange: { before: number; after: number } | null;
 }
 
 export interface ImportSummary {
   rows: number;
-  newCategories: number;
   newProducts: number;
   newVariants: number;
   updatedVariants: number;
@@ -389,7 +366,6 @@ export interface ImportSummary {
 export interface ImportPlan {
   summary: ImportSummary;
   issues: ImportIssue[];
-  categories: PlannedCategory[];
   products: PlannedProduct[];
   variants: PlannedVariant[];
   updates: PlannedUpdate[];
@@ -397,23 +373,32 @@ export interface ImportPlan {
   skipped: { line: number; sku: string }[];
 }
 
-/** Compares against the database and decides what the import would do. Read-only. */
+/**
+ * Compares every row with the database. Each Category_Code and Color_Code must match a master record exactly;
+ * a row that does not is rejected with the code in the message. Read-only.
+ */
 export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[], options: ImportOptions): Promise<ImportPlan> {
   const issues: ImportIssue[] = [];
   const skus = Array.from(new Set(rows.map((row) => row.sku)));
   const productSlugs = Array.from(new Set(rows.map((row) => slugify(row.name))));
   const fileBarcodes = rows.map((row) => row.barcode).filter((value): value is string => value !== null);
 
-  const [existingVariants, categories, sizes, existingProducts, barcodeOwners] = await Promise.all([
+  const [existingVariants, categories, colors, sizes, existingProducts, barcodeOwners] = await Promise.all([
     db.productVariant.findMany({
       where: { sku: { in: skus } },
-      select: { id: true, sku: true, size: true, color: true, price: true, stockQuantity: true, productId: true },
+      select: { id: true, sku: true, size: true, colorId: true, colorRef: { select: { name: true } }, price: true, stockQuantity: true, productId: true },
     }),
-    db.category.findMany({ select: { id: true, name: true, slug: true } }),
+    db.category.findMany({ select: { id: true, code: true, name: true } }),
+    db.color.findMany({ select: { id: true, code: true, name: true } }),
     db.size.findMany({ select: { name: true } }),
     db.product.findMany({
       where: { slug: { in: productSlugs } },
-      select: { id: true, slug: true, categoryId: true, variants: { select: { sku: true, size: true, color: true } } },
+      select: {
+        id: true,
+        slug: true,
+        categoryId: true,
+        variants: { select: { sku: true, size: true, colorId: true } },
+      },
     }),
     fileBarcodes.length > 0
       ? db.productVariant.findMany({ where: { barcode: { in: fileBarcodes } }, select: { sku: true, barcode: true } })
@@ -423,11 +408,10 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
   const variantBySku = new Map(existingVariants.map((variant) => [variant.sku, variant]));
   const barcodeOwner = new Map(barcodeOwners.map((entry) => [entry.barcode, entry.sku]));
   const productBySlug = new Map(existingProducts.map((product) => [product.slug, product]));
-  const categoryByName = new Map(categories.map((category) => [category.name.toLowerCase(), category]));
-  const categoryBySlug = new Map(categories.map((category) => [category.slug, category]));
+  const categoryByCode = new Map(categories.map((category) => [category.code, category]));
+  const colorByCode = new Map(colors.map((color) => [color.code, color]));
   const knownSizes = new Set(sizes.map((size) => size.name.toLowerCase()));
 
-  const newCategories = new Map<string, PlannedCategory>();
   const newProducts = new Map<string, PlannedProduct>();
   const variants: PlannedVariant[] = [];
   const updates: PlannedUpdate[] = [];
@@ -437,31 +421,26 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
   for (const code of fileBarcodes) usedBarcodes.add(code);
   const needsBarcode: PlannedVariant[] = [];
 
-  const resolveCategory = (row: ImportRow): { id: string; created: boolean } => {
-    const key = row.category.toLowerCase();
-    const found = categoryByName.get(key) ?? categoryBySlug.get(slugify(row.category));
-    if (found) return { id: found.id, created: false };
-    let planned = newCategories.get(key);
-    if (!planned) {
-      planned = { id: randomUUID(), name: row.category, nameTh: row.categoryTh, slug: slugify(row.category) };
-      newCategories.set(key, planned);
-    }
-    return { id: planned.id, created: true };
-  };
-
   for (const row of rows) {
-    if (!knownSizes.has(row.size.toLowerCase()) && !newSizes.has(row.size.toLowerCase())) {
-      newSizes.set(row.size.toLowerCase(), row.size);
+    const category = categoryByCode.get(row.categoryCode);
+    if (!category) {
+      issues.push({ line: row.line, message: `Category Code '${row.categoryCode}' not found. Check the Master_Data_Codes sheet.` });
+      continue;
+    }
+    const color = colorByCode.get(row.colorCode);
+    if (!color) {
+      issues.push({ line: row.line, message: `Color Code '${row.colorCode}' not found. Check the Master_Data_Codes sheet.` });
+      continue;
     }
 
     const existing = variantBySku.get(row.sku);
     if (existing) {
-      if (options.onExisting === "skip") {
-        skipped.push({ line: row.line, sku: row.sku });
+      if (existing.colorId !== color.id) {
+        issues.push({ line: row.line, message: `SKU ${row.sku} already exists in colour ${existing.colorRef.name}, not ${color.name}. Change the colour on the product page.` });
         continue;
       }
-      if (row.barcode && barcodeOwner.has(row.barcode) && barcodeOwner.get(row.barcode) !== row.sku) {
-        issues.push({ line: row.line, message: `Barcode ${row.barcode} already belongs to SKU ${barcodeOwner.get(row.barcode)}.` });
+      if (options.onExisting === "skip") {
+        skipped.push({ line: row.line, sku: row.sku });
         continue;
       }
       const currentStock = existing.stockQuantity;
@@ -472,16 +451,15 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
         sku: row.sku,
         priceBeforeSatang: Math.round(Number(existing.price) * 100),
         priceAfterSatang: row.priceSatang,
-        barcode: row.barcode,
         costAfterSatang: row.costSatang,
+        barcode: row.barcode,
         productPatch: {
           ...(row.nameTh ? { nameTh: row.nameTh } : {}),
           ...(row.brand ? { brand: row.brand } : {}),
           ...(row.description ? { description: row.description } : {}),
           ...(row.promoTag ? { promoTag: row.promoTag } : {}),
         },
-        stockChange:
-          options.applyStock && row.stock !== null && row.stock !== currentStock ? { before: currentStock, after: row.stock } : null,
+        stockChange: options.applyStock && row.stock !== null && row.stock !== currentStock ? { before: currentStock, after: row.stock } : null,
       });
       continue;
     }
@@ -493,24 +471,19 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
     }
 
     const slug = slugify(row.name);
-    const category = resolveCategory(row);
     const existingProduct = productBySlug.get(slug);
     let productId: string;
 
     if (existingProduct) {
-      if (!category.created && existingProduct.categoryId !== category.id) {
-        issues.push({ line: row.line, message: `${row.name} already exists in a different category. Use that category or rename the product.` });
-        continue;
-      }
-      if (category.created) {
-        issues.push({ line: row.line, message: `${row.name} already exists in another category, not "${row.category}".` });
+      if (existingProduct.categoryId !== category.id) {
+        issues.push({ line: row.line, message: `${row.name} already exists in a different category. Use its current Category_Code.` });
         continue;
       }
       const clash = existingProduct.variants.find(
-        (variant) => variant.size.toLowerCase() === row.size.toLowerCase() && variant.color.toLowerCase() === row.color.toLowerCase(),
+        (variant) => variant.size.toLowerCase() === row.size.toLowerCase() && variant.colorId === color.id,
       );
       if (clash) {
-        issues.push({ line: row.line, message: `${row.name} in size ${row.size} / ${row.color} already exists as SKU ${clash.sku}.` });
+        issues.push({ line: row.line, message: `${row.name} in size ${row.size} / ${color.name} already exists as SKU ${clash.sku}.` });
         continue;
       }
       productId = existingProduct.id;
@@ -534,13 +507,16 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
       productId = planned.id;
     }
 
+    if (!knownSizes.has(row.size.toLowerCase()) && !newSizes.has(row.size.toLowerCase())) newSizes.set(row.size.toLowerCase(), row.size);
+
     const planned: PlannedVariant = {
       id: randomUUID(),
       productId,
       sku: row.sku,
       barcode: row.barcode ?? "",
       size: row.size,
-      color: row.color,
+      colorId: color.id,
+      colorName: color.name,
       priceSatang: row.priceSatang,
       costSatang: row.costSatang,
       stock: row.stock ?? 0,
@@ -569,45 +545,32 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
     if (variant.barcode === "") issues.push({ line: variant.line, message: "Could not generate a unique barcode. Try again." });
   }
 
-  const stockMovements =
-    variants.filter((variant) => variant.stock > 0).length + updates.filter((update) => update.stockChange !== null).length;
+  const sizeNames = Array.from(newSizes.values());
+  const summary: ImportSummary = {
+    rows: rows.length,
+    newProducts: newProducts.size,
+    newVariants: variants.length,
+    updatedVariants: updates.length,
+    skippedVariants: skipped.length,
+    stockMovements:
+      variants.filter((variant) => variant.stock > 0).length + updates.filter((update) => update.stockChange !== null).length,
+    newSizes: sizeNames.length,
+  };
 
   return {
-    summary: {
-      rows: rows.length,
-      newCategories: newCategories.size,
-      newProducts: newProducts.size,
-      newVariants: variants.length,
-      updatedVariants: updates.length,
-      skippedVariants: skipped.length,
-      stockMovements,
-      newSizes: newSizes.size,
-    },
+    summary,
     issues: issues.sort((a, b) => a.line - b.line),
-    categories: Array.from(newCategories.values()),
     products: Array.from(newProducts.values()),
     variants,
     updates,
-    sizes: Array.from(newSizes.values()),
+    sizes: sizeNames,
     skipped,
   };
 }
 
 /** Writes a clean plan. Batches with createMany, so a 2000-row file is a handful of statements. */
 export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPlan, userId: string, fileName: string): Promise<void> {
-  if (plan.issues.length > 0) throw new Error("Cannot commit an import that has issues.");
-
-  if (plan.sizes.length > 0) {
-    const last = await tx.size.aggregate({ _max: { sortOrder: true } });
-    const start = (last._max.sortOrder ?? 0) + 1;
-    await tx.size.createMany({
-      data: plan.sizes.map((name, index) => ({ name, sortOrder: start + index })),
-      skipDuplicates: true,
-    });
-  }
-  if (plan.categories.length > 0) {
-    await tx.category.createMany({ data: plan.categories.map((c) => ({ id: c.id, name: c.name, nameTh: c.nameTh, slug: c.slug })) });
-  }
+  await ensureSizes(tx, plan.sizes);
   if (plan.products.length > 0) {
     await tx.product.createMany({
       data: plan.products.map((p) => ({
@@ -628,7 +591,8 @@ export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPla
         id: v.id,
         productId: v.productId,
         size: v.size,
-        color: v.color,
+        color: v.colorName,
+        colorId: v.colorId,
         sku: v.sku,
         barcode: v.barcode,
         price: satangToDecimal(v.priceSatang),
@@ -640,7 +604,6 @@ export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPla
 
   const reference = `import:${fileName}`.slice(0, 100);
   const movements: Prisma.InventoryMovementCreateManyInput[] = [];
-
   for (const variant of plan.variants) {
     if (variant.stock > 0) {
       movements.push({
@@ -673,6 +636,7 @@ export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPla
       movements.push({
         variantId: update.variantId,
         type: "ADJUSTMENT",
+        reasonCode: "COUNT_CORRECTION",
         quantityChange: update.stockChange.after - update.stockChange.before,
         stockBefore: update.stockChange.before,
         stockAfter: update.stockChange.after,
@@ -683,23 +647,17 @@ export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPla
     }
   }
 
-  if (movements.length > 0) await tx.inventoryMovement.createMany({ data: movements });
-
-  const priceChanges = plan.updates
-    .filter((update) => update.priceBeforeSatang !== update.priceAfterSatang)
-    .map((update) => ({
-      sku: update.sku,
-      from: satangToDecimal(update.priceBeforeSatang),
-      to: satangToDecimal(update.priceAfterSatang),
-    }));
+  for (let start = 0; start < movements.length; start += 500) {
+    await tx.inventoryMovement.createMany({ data: movements.slice(start, start + 500) });
+  }
 
   await tx.auditLog.create({
     data: {
       action: "CATALOG_IMPORT",
       entityType: "Catalog",
-      entityId: fileName.slice(0, 100),
+      entityId: reference,
       userId,
-      details: { summary: { ...plan.summary }, priceChanges: priceChanges.slice(0, 200) },
+      details: { ...plan.summary, fileName },
     },
   });
 }

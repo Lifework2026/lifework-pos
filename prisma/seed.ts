@@ -41,6 +41,7 @@ const DEMO_CATALOG = [
   {
     name: "Shirts",
     slug: "shirts",
+    code: "CAT-SHIRT",
     products: [
       {
         name: "Classic Oxford Shirt",
@@ -72,6 +73,7 @@ const DEMO_CATALOG = [
   {
     name: "Pants",
     slug: "pants",
+    code: "CAT-PANT",
     products: [
       {
         name: "Slim Chino Pants",
@@ -143,11 +145,35 @@ async function fillThaiNames(): Promise<void> {
   }
 }
 
+/** Starting colours with catalog codes. Created once; rename or add more in Back-Office > Colours. */
+const DEFAULT_COLORS = [
+  { code: "COL-STD", name: "Standard", nameTh: "มาตรฐาน" },
+  { code: "COL-WHT", name: "White", nameTh: "ขาว" },
+  { code: "COL-BLK", name: "Black", nameTh: "ดำ" },
+  { code: "COL-BLU", name: "Blue", nameTh: "น้ำเงิน" },
+  { code: "COL-RED", name: "Red", nameTh: "แดง" },
+  { code: "COL-KHK", name: "Khaki", nameTh: "กากี" },
+  { code: "COL-SND", name: "Sand", nameTh: "ทราย" },
+  { code: "COL-OLV", name: "Olive", nameTh: "เขียวมะกอก" },
+  { code: "COL-IND", name: "Indigo", nameTh: "คราม" },
+];
+
+async function seedDefaultColors(): Promise<void> {
+  for (let index = 0; index < DEFAULT_COLORS.length; index += 1) {
+    const color = DEFAULT_COLORS[index];
+    await prisma.color.upsert({
+      where: { code: color.code },
+      update: {},
+      create: { code: color.code, name: color.name, nameTh: color.nameTh, sortOrder: index + 1 },
+    });
+  }
+}
+
 async function seedBags(): Promise<void> {
   const category = await prisma.category.upsert({
     where: { slug: "supplies" },
     update: {},
-    create: { name: "Supplies", slug: "supplies" },
+    create: { name: "Supplies", slug: "supplies", code: "CAT-SUP" },
   });
   await fillThaiNames();
   const product = await prisma.product.upsert({
@@ -170,6 +196,7 @@ async function seedBags(): Promise<void> {
         productId: product.id,
         size: bag.size,
         color: "Standard",
+        colorId: (await prisma.color.findUniqueOrThrow({ where: { code: "COL-STD" }, select: { id: true } })).id,
         sku: bag.sku,
         barcode: bag.barcode,
         price: bag.price,
@@ -182,13 +209,14 @@ async function seedBags(): Promise<void> {
 
 async function seedDemoCatalog(): Promise<number> {
   let created = 0;
+  const colorIdByName = new Map((await prisma.color.findMany({ select: { id: true, name: true } })).map((c) => [c.name, c.id]));
   let barcodeSeq = 1;
 
   for (const cat of DEMO_CATALOG) {
     const category = await prisma.category.upsert({
       where: { slug: cat.slug },
       update: {},
-      create: { name: cat.name, slug: cat.slug },
+      create: { name: cat.name, slug: cat.slug, code: cat.code },
     });
 
     for (const p of cat.products) {
@@ -220,6 +248,7 @@ async function seedDemoCatalog(): Promise<number> {
             productId: product.id,
             size: v.size,
             color: v.color,
+            colorId: colorIdByName.get(v.color) ?? (() => { throw new Error(`No colour ${v.color}`); })(),
             sku,
             barcode,
             price: v.price,
@@ -235,11 +264,11 @@ async function seedDemoCatalog(): Promise<number> {
 
 /** Starting categories for a fashion store. Created once; rename or add more in Back-Office > Categories & sizes. */
 const DEFAULT_CATEGORIES = [
-  { name: "Shirts", nameTh: "เสื้อ", slug: "shirts" },
-  { name: "Pants", nameTh: "กางเกง", slug: "pants" },
-  { name: "Dresses", nameTh: "เดรส", slug: "dresses" },
-  { name: "Outerwear", nameTh: "เสื้อคลุม", slug: "outerwear" },
-  { name: "Accessories", nameTh: "เครื่องประดับ", slug: "accessories" },
+  { name: "Shirts", nameTh: "เสื้อ", slug: "shirts", code: "CAT-SHIRT" },
+  { name: "Pants", nameTh: "กางเกง", slug: "pants", code: "CAT-PANT" },
+  { name: "Dresses", nameTh: "เดรส", slug: "dresses", code: "CAT-DRESS" },
+  { name: "Outerwear", nameTh: "เสื้อคลุม", slug: "outerwear", code: "CAT-OUTER" },
+  { name: "Accessories", nameTh: "เครื่องประดับ", slug: "accessories", code: "CAT-ACC" },
 ];
 
 async function seedDefaultCategories(): Promise<void> {
@@ -247,7 +276,7 @@ async function seedDefaultCategories(): Promise<void> {
     await prisma.category.upsert({
       where: { slug: category.slug },
       update: {},
-      create: { name: category.name, nameTh: category.nameTh, slug: category.slug },
+      create: { name: category.name, nameTh: category.nameTh, slug: category.slug, code: category.code },
     });
   }
 }
@@ -281,6 +310,7 @@ async function main(): Promise<void> {
   await seedAccounts();
   await seedBags();
   await seedDefaultCategories();
+  await seedDefaultColors();
   // The demo catalogue is sample clothing for training only. Set SEED_DEMO=1 to create it.
   const demoCreated = process.env.SEED_DEMO === "1" ? await seedDemoCatalog() : 0;
   await fillThaiNames();

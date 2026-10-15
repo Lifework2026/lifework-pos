@@ -8,6 +8,7 @@ import { randomStoreEan13 } from "@/lib/barcode";
 import { BARCODE_RULE_MESSAGE, isValidBarcode } from "@/lib/barcode-rules";
 import { defaultSku, ImageBindingError, validateImageBinding } from "@/lib/catalog/sku";
 import { ensureSizes } from "@/lib/catalog/sizes";
+import { colorNamesById } from "@/lib/master-data";
 import { getStorageConfig, deleteProductImage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,8 @@ const variantPatchSchema = z.object({
   /** Present for an existing variant, absent for a new one. */
   id: z.string().min(1).max(64).optional(),
   size: z.string().trim().min(1).max(20),
-  color: z.string().trim().min(1).max(40),
+  /** The colour master record. Required for new variants, optional for existing ones. */
+  colorId: z.string().min(1).max(64).optional(),
   sku: z.string().trim().min(1).max(40).optional().nullable(),
   barcode: z.string().trim().refine(isValidBarcode, BARCODE_RULE_MESSAGE).optional().nullable(),
   price: z.number().positive().max(1_000_000),
@@ -129,15 +131,24 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           }
         }
 
-        // After the edit, every (size, color) pair on the product must still be unique.
+        // Colours come from the master data. New variants must name one; existing ones may keep theirs.
+        for (const variant of incoming) {
+          if (!variant.id && !variant.colorId) throw new ProductError(400, "COLOR_REQUIRED", "Choose a colour for the new variant.");
+        }
+        const colorNames = await colorNamesById(tx, incoming.map((variant) => variant.colorId ?? "").filter(Boolean));
+        for (const variant of incoming) {
+          if (variant.colorId && !colorNames.has(variant.colorId)) throw new ProductError(400, "COLOR_NOT_FOUND", "Choose a colour from the list.");
+        }
+
+        // After the edit, every (size, colour) pair on the product must still be unique.
         const finalPairs = new Map<string, string>();
         for (const variant of product.variants) {
           const edited = incoming.find((entry) => entry.id === variant.id);
           const size = edited?.size ?? variant.size;
-          const color = edited?.color ?? variant.color;
-          finalPairs.set(variant.id, `${size.toLowerCase()}|${color.toLowerCase()}`);
+          const colorId = edited?.colorId ?? variant.colorId;
+          finalPairs.set(variant.id, `${size.toLowerCase()}|${colorId}`);
         }
-        incoming.filter((entry) => !entry.id).forEach((entry, index) => finalPairs.set(`new-${index}`, `${entry.size.toLowerCase()}|${entry.color.toLowerCase()}`));
+        incoming.filter((entry) => !entry.id).forEach((entry, index) => finalPairs.set(`new-${index}`, `${entry.size.toLowerCase()}|${entry.colorId}`));
         if (new Set(finalPairs.values()).size !== finalPairs.size) {
           throw new ProductError(400, "DUPLICATE_VARIANT", "Two variants would have the same size and color.");
         }
@@ -153,7 +164,10 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             if (!current) continue;
             const data: Prisma.ProductVariantUpdateInput = {};
             if (variant.size !== current.size) data.size = variant.size;
-            if (variant.color !== current.color) data.color = variant.color;
+            if (variant.colorId && variant.colorId !== current.colorId) {
+              data.colorRef = { connect: { id: variant.colorId } };
+              data.color = colorNames.get(variant.colorId) ?? current.color;
+            }
             if (variant.sku && variant.sku.toUpperCase() !== current.sku) data.sku = variant.sku.toUpperCase();
             if (variant.barcode && variant.barcode !== current.barcode) data.barcode = variant.barcode;
             if (variant.cost !== undefined) {
@@ -171,13 +185,17 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
               changedFields.push(`variant:${current.sku}`);
             }
           } else {
-            const sku = variant.sku ? variant.sku.toUpperCase() : defaultSku(input.name ?? product.name, variant.color, variant.size);
+            const colorId = variant.colorId;
+            if (!colorId) throw new ProductError(400, "COLOR_REQUIRED", "Choose a colour for the new variant.");
+            const colorName = colorNames.get(colorId) ?? "";
+            const sku = variant.sku ? variant.sku.toUpperCase() : defaultSku(input.name ?? product.name, colorName, variant.size);
             const stock = variant.initialStock ?? 0;
             const created = await tx.productVariant.create({
               data: {
                 productId: product.id,
                 size: variant.size,
-                color: variant.color,
+                color: colorName,
+                colorId,
                 sku,
                 barcode: variant.barcode ?? randomStoreEan13(),
                 price: variant.price,

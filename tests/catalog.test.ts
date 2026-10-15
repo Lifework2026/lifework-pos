@@ -3,7 +3,7 @@
  * Run with: npm test
  */
 import assert from "node:assert/strict";
-import { parseImportTable, TEMPLATE_EXAMPLE_ROWS, TEMPLATE_HEADER } from "../lib/catalog/import";
+import { parseImportTable, TEMPLATE_HEADER } from "../lib/catalog/import";
 import { detectImageType } from "../lib/image-type";
 import { slugify } from "../lib/slug";
 import { buildXlsx, parseCsv, parseXlsx, toCsv } from "../lib/tabular";
@@ -84,101 +84,79 @@ const header = ["SKU", "Name", "Category", "Size", "Price", "Stock"];
     assert.equal(parsed[2][2], "8851234567890");
   });
 
-  // ---------------- Import validation
-  await test("import: the downloadable template parses cleanly", () => {
-    const result = parseImportTable([TEMPLATE_HEADER, ...TEMPLATE_EXAMPLE_ROWS]);
+  // ---------------- Import validation (Template A, keyed by master-data codes)
+  await test("import: the downloadable template header parses cleanly with an example row", () => {
+    const example = ["LW265TS99035XL", "LW-TEE-M", "เสื้อยืด", "Cotton Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "180", "10", "HOT"];
+    const result = parseImportTable([TEMPLATE_HEADER, example]);
     assert.equal(result.issues.length, 0, JSON.stringify(result.issues));
-    assert.equal(result.rows.length, TEMPLATE_EXAMPLE_ROWS.length);
     assert.equal(result.rows[0].priceSatang, 39_000);
-    assert.equal(result.rows[0].nameTh, "เสื้อยืดคอตตอนเบสิก");
+    assert.equal(result.rows[0].categoryCode, "CAT-SHIRT");
+    assert.equal(result.rows[0].colorCode, "COL-BLK");
+    assert.equal(result.rows[0].costSatang, 18_000);
+    assert.equal(result.rows[0].promoTag, "HOT");
   });
 
-  await test("import: header aliases, thousands separators and baht signs are accepted", () => {
+  await test("import: Category_Code and Color_Code are required columns", () => {
+    const result = parseImportTable([["SKU", "Name_EN", "Size", "Price"], ["LW-1", "Tee", "M", "390"]]);
+    assert.ok(result.issues.some((i) => /Category_Code/.test(i.message)), "category code column");
+    assert.ok(result.issues.some((i) => /Color_Code/.test(i.message)), "colour code column");
+  });
+
+  await test("import: a row without a category or colour code is refused with the line number", () => {
     const result = parseImportTable([
-      ["sku", "Product Name", "Category", "SIZE", "Unit Price", "Qty", "Colour"],
-      ["a-1", "Jacket", "Outerwear", "L", "1,290.50", "5", "Navy"],
-      ["a-2", "Jacket", "Outerwear", "M", "฿1290", "", ""],
+      ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"],
+      ["LW-1", "Tee", "", "COL-BLK", "M", "390"],
+      ["LW-2", "Tee", "CAT-SHIRT", "", "L", "390"],
+    ]);
+    assert.ok(result.issues.some((i) => i.line === 2 && /Category_Code is required/.test(i.message)));
+    assert.ok(result.issues.some((i) => i.line === 3 && /Color_Code is required/.test(i.message)));
+  });
+
+  await test("import: codes are accepted in lower case and stored in upper case", () => {
+    const result = parseImportTable([
+      ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"],
+      ["LW-1", "Tee", "cat-shirt", "col-blk", "M", "390"],
     ]);
     assert.equal(result.issues.length, 0, JSON.stringify(result.issues));
-    assert.equal(result.rows[0].sku, "A-1");
-    assert.equal(result.rows[0].priceSatang, 129_050);
-    assert.equal(result.rows[0].color, "Navy");
-    assert.equal(result.rows[1].stock, null);
-    assert.equal(result.rows[1].color, "Standard");
+    assert.equal(result.rows[0].categoryCode, "CAT-SHIRT");
+    assert.equal(result.rows[0].colorCode, "COL-BLK");
   });
 
-  await test("import: missing required column is reported once per column", () => {
-    const result = parseImportTable([["SKU", "Name"], ["A", "B"]]);
-    const messages = result.issues.map((issue) => issue.message);
-    assert.equal(result.rows.length, 0);
-    assert.ok(messages.some((m) => m.includes('"Category"')));
-    assert.ok(messages.some((m) => m.includes('"Size"')));
-    assert.ok(messages.some((m) => m.includes('"Price"')));
-  });
-
-  await test("import: row problems carry the right line numbers", () => {
+  await test("import: a malformed code is refused with the rule", () => {
     const result = parseImportTable([
-      header,
-      ["OK-1", "Tee", "Shirts", "M", "100", "1"],
-      ["bad sku!", "Tee", "Shirts", "L", "100", "1"],
-      ["OK-3", "Tee", "Shirts", "XL", "-5", "1"],
-      ["OK-4", "Tee", "Shirts", "XXL", "10.999", "1"],
-      ["OK-5", "Tee", "Shirts", "S", "100", "-2"],
-      ["OK-6", "", "Shirts", "S", "100", "1"],
+      ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"],
+      ["LW-1", "Tee", "shirts!", "COL-BLK", "M", "390"],
     ]);
-    const lines = new Set(result.issues.map((issue) => issue.line));
-    assert.deepEqual(Array.from(lines).sort(), [3, 4, 5, 6, 7]);
-    assert.equal(result.rows.length, 1);
+    assert.ok(result.issues.some((i) => /Category_Code 'SHIRTS!'/.test(i.message)));
   });
 
-  await test("import: duplicates inside the file are caught", () => {
+  await test("import: the same product must not be listed under two categories", () => {
     const result = parseImportTable([
-      [...header, "Barcode"],
-      ["DUP-1", "Tee", "Shirts", "M", "100", "1", "8850000000011"],
-      ["DUP-1", "Tee", "Shirts", "L", "100", "1", ""],
-      ["DUP-2", "Tee", "Shirts", "S", "100", "1", "8850000000011"],
-      ["DUP-3", "Tee", "Shirts", "M", "100", "1", ""],
+      ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"],
+      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "M", "390"],
+      ["LW-2", "Tee", "CAT-PANT", "COL-BLK", "L", "390"],
     ]);
-    const messages = result.issues.map((issue) => `${issue.line}:${issue.message}`).join("|");
-    assert.match(messages, /3:SKU DUP-1 already appears on line 2/);
-    assert.match(messages, /4:Barcode 8850000000011 already appears on line 2/);
-    assert.match(messages, /5:Tee in size M/);
+    assert.ok(result.issues.some((i) => i.line === 3 && /Use one category/.test(i.message)));
   });
 
-  await test("import: one product under two categories is rejected", () => {
+  await test("import: duplicate SKUs and barcodes inside the file are caught", () => {
     const result = parseImportTable([
-      header,
-      ["P-1", "Tee", "Shirts", "M", "100", "1"],
-      ["P-2", "Tee", "Pants", "L", "100", "1"],
+      ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price", "Barcode"],
+      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "LW265TS99035XL"],
+      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "L", "390", "LW265TS99035XM"],
+      ["LW-3", "Tee", "CAT-SHIRT", "COL-BLK", "S", "390", "LW265TS99035XL"],
     ]);
-    assert.ok(result.issues.some((issue) => issue.line === 3 && /listed under/.test(issue.message)));
-  });
-
-  await test("import: barcodes from the source (letters and digits) are accepted, stock must be a whole number", () => {
-    const result = parseImportTable([
-      [...header, "Barcode"],
-      ["B-1", "Tee", "Shirts", "M", "100", "1", "LW265TS99035XL"],
-      ["B-2", "Tee", "Shirts", "L", "100", "2", "8859000000012"],
-      ["B-3", "Tee", "Shirts", "S", "100", "1.5", ""],
-      ["B-4", "Tee", "Shirts", "XS", "100", "1", "ab"],
-      ["B-5", "Tee", "Shirts", "XL", "100", "12.0", "12 34"],
-    ]);
-    assert.equal(result.rows.find((r) => r.sku === "B-1")?.barcode, "LW265TS99035XL");
-    assert.equal(result.rows.find((r) => r.sku === "B-2")?.barcode, "8859000000012");
-    assert.ok(result.issues.some((i) => i.line === 4 && /Stock/.test(i.message)), "fractional stock");
-    assert.ok(result.issues.some((i) => i.line === 5 && /Barcode/.test(i.message)), "too-short barcode");
-    assert.ok(result.issues.some((i) => i.line === 6 && /Barcode/.test(i.message)), "barcode with a space");
-    assert.equal(result.rows.find((r) => r.sku === "B-5"), undefined);
+    assert.ok(result.issues.some((i) => i.line === 3 && /SKU LW-1 is already on line 2/.test(i.message)));
+    assert.ok(result.issues.some((i) => i.line === 4 && /already appears on line 2/.test(i.message)));
   });
 
   await test("import: the row limit is enforced", () => {
-    const rows = Array.from({ length: 2001 }, (_, i) => [`S-${i}`, `P${i}`, "C", "M", "10", "1"]);
-    const result = parseImportTable([header, ...rows]);
+    const rows = Array.from({ length: 2001 }, (_, i) => [`S-${i}`, `P${i}`, "CAT-SHIRT", "COL-BLK", "M", "10"]);
+    const result = parseImportTable([["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"], ...rows]);
     assert.equal(result.rows.length, 0);
     assert.match(result.issues[0].message, /limit is 2000/);
   });
 
-  // ---------------- Slugs
   await test("slug: Latin names are readable, Thai names get a stable hash", () => {
     assert.equal(slugify("Basic Cotton Tee!"), "basic-cotton-tee");
     const thai = slugify("เสื้อยืด");

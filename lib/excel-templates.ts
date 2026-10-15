@@ -2,23 +2,43 @@
  * The three bulk-action spreadsheets. Each workbook has two sheets:
  *   Data          row 1 holds the headers, row 2 is an example in the exact format. Replace or delete row 2.
  *   Instructions  what each column means and what is accepted.
- * The example barcode and SKU start with EXAMPLE-, and every importer refuses such a row, so an unedited sample
- * can never create or change stock.
+ * Template A also has Master_Data_Codes: every current category and colour with its code, read from the database
+ * when the file is made. The example barcode and SKU start with EXAMPLE-, and every importer refuses such a row, so
+ * an unedited sample can never create or change stock.
  */
 
+import type { Prisma } from "@prisma/client";
 import { MAX_PRICE_ROWS, PRICE_TEMPLATE_HEADER } from "@/lib/catalog/price-import";
 import { MAX_STOCK_ROWS, STOCK_TEMPLATE_HEADER } from "@/lib/catalog/stock-import";
+import { TEMPLATE_HEADER } from "@/lib/catalog/import";
+import { prisma } from "@/lib/prisma";
 
 export type TemplateType = "A" | "B" | "C";
 
-export const NEW_PRODUCT_HEADER = ["Barcode", "SKU", "Name_TH", "Name_EN", "Category", "Size", "Price", "Cost", "Initial_Stock", "Promo_Tag"];
+export const NEW_PRODUCT_HEADER = TEMPLATE_HEADER;
+
+/** The master data a template lists, read from the database. */
+export interface MasterData {
+  categories: { code: string; name: string; nameTh: string | null }[];
+  colors: { code: string; name: string; nameTh: string | null }[];
+}
+
+/** Reads the current categories and colours, ordered by code, for Template A. */
+export async function loadMasterData(db: Prisma.TransactionClient | typeof prisma = prisma): Promise<MasterData> {
+  const [categories, colors] = await Promise.all([
+    db.category.findMany({ orderBy: { code: "asc" }, select: { code: true, name: true, nameTh: true } }),
+    db.color.findMany({ orderBy: [{ sortOrder: "asc" }, { code: "asc" }], select: { code: true, name: true, nameTh: true } }),
+  ]);
+  return { categories, colors };
+}
 
 interface TemplateSpec {
   title: string;
   file: string;
   header: string[];
-  example: string[];
-  /** Zero-based columns Excel must keep as text (barcodes, SKUs). */
+  /** Row 2. For Template A the codes are taken from the live master data. */
+  example: (master: MasterData) => string[];
+  /** Zero-based columns Excel must keep as text (barcodes, SKUs, codes). */
   textColumns: number[];
   widths: number[];
   instructions: string[];
@@ -29,28 +49,42 @@ export const TEMPLATES: Record<TemplateType, TemplateSpec> = {
     title: "A. New products",
     file: "lifework-template-A-new-products.xlsx",
     header: NEW_PRODUCT_HEADER,
-    example: ["EXAMPLE-0000001", "EXAMPLE-TEE-M", "เสื้อยืดตัวอย่าง", "Example Tee", "Shirts", "M", "390", "180", "10", "HOT"],
-    textColumns: [0, 1],
-    widths: [18, 18, 22, 22, 14, 8, 10, 10, 14, 14],
+    example: (master) => [
+      "EXAMPLE-0000001",
+      "EXAMPLE-TEE-M",
+      "เสื้อยืดตัวอย่าง",
+      "Example Tee",
+      master.categories[0]?.code ?? "CAT-EXAMPLE",
+      master.colors[0]?.code ?? "COL-EXAMPLE",
+      "M",
+      "390",
+      "180",
+      "10",
+      "HOT",
+    ],
+    textColumns: [0, 1, 4, 5],
+    widths: [18, 18, 22, 22, 16, 14, 8, 10, 10, 14, 14],
     instructions: [
       "Use this template to create products that are not in the system yet. One row per size and colour.",
+      "Category_Code (required): the code of an existing category, copied exactly from the Master_Data_Codes sheet. Categories are not created by this import.",
+      "Color_Code (required): the code of an existing colour, copied exactly from the Master_Data_Codes sheet. Colours are not created by this import.",
+      "A code that is not in the master data is refused with a message naming the code. Fix the code or add the category or colour first, then import again.",
       "Barcode: the code printed on the item or label. Letters, digits and - . / _ only, 4 to 40 characters. Leave blank to have the system create one.",
-      "SKU: the stock-keeping code, letters, digits, dots, dashes or underscores. Leave blank to have one generated.",
-      "Name_TH / Name_EN: the product name in Thai and in English. Rows with the same name are one product.",
-      "Category: an existing category name, or a new one. New categories are created automatically.",
+      "SKU: the stock-keeping code, letters, digits, dots, dashes or underscores.",
+      "Name_TH / Name_EN: the product name in Thai and in English. Rows with the same name are one product, and must use the same category.",
       "Size: for example S, M, L, 30, Free Size. Sizes that are new are added to the size list.",
       "Price: the selling price in baht, VAT included, up to 2 decimals.",
       "Cost: the unit cost in baht. Optional.",
       "Initial_Stock: the units on hand when the product is created. Written to the stock history as an opening entry.",
       "Promo_Tag: a short badge shown on the till, for example SALE, HOT or BUY 1 GET 1. Optional.",
-      `Up to 2000 rows per file. Row 2 is an example: replace it or delete it. A row that still starts with EXAMPLE- is refused.`,
+      "Up to 2000 rows per file. Row 2 is an example: replace it or delete it. A row that still starts with EXAMPLE- is refused.",
     ],
   },
   B: {
     title: "B. Price and promo update",
     file: "lifework-template-B-price-promo.xlsx",
     header: PRICE_TEMPLATE_HEADER,
-    example: ["EXAMPLE-0000001", "350", "SALE"],
+    example: () => ["EXAMPLE-0000001", "350", "SALE"],
     textColumns: [0],
     widths: [18, 12, 16],
     instructions: [
@@ -66,7 +100,7 @@ export const TEMPLATES: Record<TemplateType, TemplateSpec> = {
     title: "C. Stock in and out",
     file: "lifework-template-C-stock.xlsx",
     header: STOCK_TEMPLATE_HEADER,
-    example: ["EXAMPLE-0000001", "-2", "Damage"],
+    example: () => ["EXAMPLE-0000001", "-2", "Damage"],
     textColumns: [0],
     widths: [18, 18, 14],
     instructions: [
@@ -86,9 +120,18 @@ export function isTemplateType(value: string | null | undefined): value is Templ
   return value === "A" || value === "B" || value === "C";
 }
 
-/** Builds the .xlsx for one template. Row 1 is the header, row 2 the example, and a second sheet explains the columns. */
-export async function buildTemplateWorkbook(type: TemplateType): Promise<Buffer> {
+/** Example row for a template, with the live codes for Template A. */
+export function templateExample(type: TemplateType, master: MasterData): string[] {
+  return TEMPLATES[type].example(master);
+}
+
+/**
+ * Builds the .xlsx for one template. Template A also gets the Master_Data_Codes sheet, listing every category and
+ * colour with its code. The master data is read from the database when the file is made.
+ */
+export async function buildTemplateWorkbook(type: TemplateType, master?: MasterData): Promise<Buffer> {
   const spec = TEMPLATES[type];
+  const masterData = type === "A" ? (master ?? (await loadMasterData())) : { categories: [], colors: [] };
   const ExcelJS = (await import("exceljs")).default;
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Lifework POS";
@@ -104,8 +147,30 @@ export async function buildTemplateWorkbook(type: TemplateType): Promise<Buffer>
   const headerRow = data.getRow(1);
   headerRow.font = { bold: true };
   headerRow.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
-  const exampleRow = data.addRow(spec.example);
+  const exampleRow = data.addRow(spec.example(masterData));
   exampleRow.font = { italic: true, color: { argb: "FF6B7280" } };
+
+  if (type === "A") {
+    const codes = workbook.addWorksheet("Master_Data_Codes", { views: [{ state: "frozen", ySplit: 1 }] });
+    codes.columns = [
+      { header: "Type", key: "type", width: 12 },
+      { header: "Code", key: "code", width: 16 },
+      { header: "Name_EN", key: "name", width: 24 },
+      { header: "Name_TH", key: "nameTh", width: 24 },
+    ];
+    codes.getRow(1).font = { bold: true };
+    codes.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFE5E7EB" } };
+    codes.getColumn("code").numFmt = "@";
+    for (const category of masterData.categories) {
+      codes.addRow({ type: "Category", code: category.code, name: category.name, nameTh: category.nameTh ?? "" });
+    }
+    for (const color of masterData.colors) {
+      codes.addRow({ type: "Color", code: color.code, name: color.name, nameTh: color.nameTh ?? "" });
+    }
+    if (masterData.categories.length === 0 && masterData.colors.length === 0) {
+      codes.addRow({ type: "", code: "", name: "No categories or colours yet. Add them in Back-Office first.", nameTh: "" });
+    }
+  }
 
   const notes = workbook.addWorksheet("Instructions");
   notes.getColumn(1).width = 110;
@@ -119,4 +184,3 @@ export async function buildTemplateWorkbook(type: TemplateType): Promise<Buffer>
   const out = await workbook.xlsx.writeBuffer();
   return Buffer.from(out as ArrayBuffer);
 }
-

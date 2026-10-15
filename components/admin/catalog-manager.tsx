@@ -11,6 +11,7 @@ import { useI18n } from "@/lib/i18n/client";
 
 interface CategoryRow {
   id: string;
+  code: string;
   name: string;
   nameTh: string | null;
   productCount: number;
@@ -32,8 +33,9 @@ export function CatalogManager() {
   const [error, setError] = useState<string | null>(null);
 
   const [newCategory, setNewCategory] = useState("");
+  const [newCategoryCode, setNewCategoryCode] = useState("");
   const [newCategoryTh, setNewCategoryTh] = useState("");
-  const [editingCategory, setEditingCategory] = useState<{ id: string; name: string; nameTh: string } | null>(null);
+  const [editingCategory, setEditingCategory] = useState<{ id: string; code: string; name: string; nameTh: string } | null>(null);
 
   const [newSize, setNewSize] = useState("");
   const [editingSize, setEditingSize] = useState<{ id: string; name: string; sortOrder: string } | null>(null);
@@ -78,7 +80,11 @@ export function CatalogManager() {
   async function addCategory(): Promise<void> {
     const ok = await change(
       async () => {
-        const r = await requestJson("/api/admin/categories", json("POST", { name: newCategory, nameTh: newCategoryTh || null }), { retries: 0 });
+        const r = await requestJson(
+          "/api/admin/categories",
+          json("POST", { code: newCategoryCode, name: newCategory, nameTh: newCategoryTh || null }),
+          { retries: 0 },
+        );
         return r.ok ? { ok: true } : { ok: false, message: r.message };
       },
       "catalog.categoryAdded",
@@ -86,6 +92,7 @@ export function CatalogManager() {
     if (ok) {
       setNewCategory("");
       setNewCategoryTh("");
+      setNewCategoryCode("");
     }
   }
 
@@ -95,7 +102,7 @@ export function CatalogManager() {
       async () => {
         const r = await requestJson(
           `/api/admin/categories/${editingCategory.id}`,
-          json("PATCH", { name: editingCategory.name, nameTh: editingCategory.nameTh || null }),
+          json("PATCH", { code: editingCategory.code, name: editingCategory.name, nameTh: editingCategory.nameTh || null }),
           { retries: 0 },
         );
         return r.ok ? { ok: true } : { ok: false, message: r.message };
@@ -175,10 +182,18 @@ export function CatalogManager() {
             <CardDescription>{t("catalog.categoriesHint")}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            <div className="grid gap-2 sm:grid-cols-[8rem_1fr_1fr_auto]">
+              <Input
+                value={newCategoryCode}
+                onChange={(e) => setNewCategoryCode(e.target.value.toUpperCase())}
+                placeholder={t("catalog.codePlaceholder")}
+                aria-label={t("catalog.code")}
+                maxLength={20}
+                className="font-mono"
+              />
               <Input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder={t("catalog.nameEn")} maxLength={80} />
               <Input value={newCategoryTh} onChange={(e) => setNewCategoryTh(e.target.value)} placeholder={t("catalog.nameTh")} maxLength={80} />
-              <Button onClick={addCategory} disabled={busy || !newCategory.trim()}>
+              <Button onClick={addCategory} disabled={busy || !newCategory.trim() || !newCategoryCode.trim()}>
                 <Plus className="size-4" /> {t("catalog.add")}
               </Button>
             </div>
@@ -195,7 +210,14 @@ export function CatalogManager() {
                   <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                     {editingCategory?.id === row.id ? (
                       <>
-                        <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                        <div className="grid flex-1 gap-2 sm:grid-cols-3">
+                          <Input
+                            value={editingCategory.code}
+                            onChange={(e) => setEditingCategory({ ...editingCategory, code: e.target.value.toUpperCase() })}
+                            maxLength={20}
+                            aria-label={t("catalog.code")}
+                            className="font-mono"
+                          />
                           <Input
                             value={editingCategory.name}
                             onChange={(e) => setEditingCategory({ ...editingCategory, name: e.target.value })}
@@ -210,7 +232,7 @@ export function CatalogManager() {
                           />
                         </div>
                         <div className="flex gap-1">
-                          <Button size="icon-sm" onClick={saveCategory} disabled={busy || !editingCategory.name.trim()} aria-label={t("catalog.save")}>
+                          <Button size="icon-sm" onClick={saveCategory} disabled={busy || !editingCategory.name.trim() || !editingCategory.code.trim()} aria-label={t("catalog.save")}>
                             <Check className="size-4" />
                           </Button>
                           <Button size="icon-sm" variant="ghost" onClick={() => setEditingCategory(null)} aria-label={t("common.cancel")}>
@@ -221,7 +243,10 @@ export function CatalogManager() {
                     ) : (
                       <>
                         <div className="min-w-0 text-sm">
-                          <p className="truncate font-medium">{row.name}</p>
+                          <p className="truncate font-medium">
+                            <span className="mr-2 font-mono text-xs text-muted-foreground">{row.code}</span>
+                            {row.name}
+                          </p>
                           <p className="truncate text-xs text-muted-foreground">
                             {row.nameTh ?? "—"} · {t("catalog.productCount", { count: row.productCount })}
                           </p>
@@ -230,7 +255,7 @@ export function CatalogManager() {
                           <Button
                             size="icon-sm"
                             variant="ghost"
-                            onClick={() => setEditingCategory({ id: row.id, name: row.name, nameTh: row.nameTh ?? "" })}
+                            onClick={() => setEditingCategory({ id: row.id, code: row.code, name: row.name, nameTh: row.nameTh ?? "" })}
                             aria-label={t("products.edit")}
                           >
                             <Pencil className="size-4" />

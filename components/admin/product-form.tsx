@@ -19,10 +19,19 @@ export interface FormCategory {
   nameTh: string | null;
 }
 
+/** A colour from the master data. Variants are linked to it by id. */
+export interface FormColor {
+  id: string;
+  code: string;
+  name: string;
+  nameTh: string | null;
+}
+
 export interface InitialVariant {
   id: string;
   size: string;
   color: string;
+  colorId: string;
   sku: string;
   barcode: string;
   price: string;
@@ -51,6 +60,7 @@ interface Row {
   id?: string;
   size: string;
   color: string;
+  colorId: string;
   sku: string;
   barcode: string;
   price: string;
@@ -63,6 +73,7 @@ interface Row {
 interface ProductFormProps {
   mode: "create" | "edit";
   categories: FormCategory[];
+  colors: FormColor[];
   sizes: string[];
   storageReady: boolean;
   initial?: InitialProduct;
@@ -71,7 +82,7 @@ interface ProductFormProps {
 let nextKey = 1;
 
 function newRow(): Row {
-  return { key: nextKey++, size: "", color: "", sku: "", barcode: "", price: "", cost: "", initialStock: "0", stock: 0, isActive: true };
+  return { key: nextKey++, size: "", color: "", colorId: "", sku: "", barcode: "", price: "", cost: "", initialStock: "0", stock: 0, isActive: true };
 }
 
 function rowFromVariant(variant: InitialVariant): Row {
@@ -80,6 +91,7 @@ function rowFromVariant(variant: InitialVariant): Row {
     id: variant.id,
     size: variant.size,
     color: variant.color,
+    colorId: variant.colorId,
     sku: variant.sku,
     barcode: variant.barcode,
     price: variant.price,
@@ -92,7 +104,7 @@ function rowFromVariant(variant: InitialVariant): Row {
 
 const PRICE_PATTERN = /^\d+(\.\d{1,2})?$/;
 
-export function ProductForm({ mode, categories, sizes, storageReady, initial }: ProductFormProps) {
+export function ProductForm({ mode, categories, colors, sizes, storageReady, initial }: ProductFormProps) {
   const { t, locale } = useI18n();
   const router = useRouter();
 
@@ -122,11 +134,11 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
     for (let index = 0; index < rows.length; index += 1) {
       const row = rows[index];
       const n = index + 1;
-      if (!row.size.trim() || !row.color.trim()) return t("products.errVariant", { n });
+      if (!row.size.trim() || !row.colorId) return t("products.errVariant", { n });
       if (!PRICE_PATTERN.test(row.price.trim()) || Number(row.price) <= 0) return t("products.errPrice", { n });
       if (row.cost.trim() !== "" && !PRICE_PATTERN.test(row.cost.trim())) return t("products.errCost", { n });
       if (!row.id && (!/^\d+$/.test(row.initialStock.trim()) || Number(row.initialStock) < 0)) return t("products.errStock", { n });
-      const key = `${row.size.trim().toLowerCase()}|${row.color.trim().toLowerCase()}`;
+      const key = `${row.size.trim().toLowerCase()}|${row.colorId}`;
       if (seen.has(key)) return t("products.errDuplicate", { n });
       seen.add(key);
     }
@@ -150,7 +162,7 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
     const variants = rows.map((row) => ({
       ...(row.id ? { id: row.id, isActive: row.isActive } : { initialStock: Number(row.initialStock) }),
       size: row.size.trim(),
-      color: row.color.trim(),
+      colorId: row.colorId,
       sku: row.sku.trim() || null,
       barcode: row.barcode.trim() || null,
       price: Number(row.price),
@@ -345,12 +357,22 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
                     />
                   </td>
                   <td className="px-3 py-2">
-                    <Input
-                      value={row.color}
-                      onChange={(event) => updateRow(row.key, { color: event.target.value })}
+                    <select
+                      value={row.colorId}
+                      onChange={(event) => {
+                        const picked = colors.find((color) => color.id === event.target.value);
+                        updateRow(row.key, { colorId: event.target.value, color: picked?.name ?? "" });
+                      }}
                       aria-label={`${t("products.colColor")} ${index + 1}`}
-                      className="h-9 w-32"
-                    />
+                      className="h-9 w-40 rounded-md border bg-background px-2 text-sm"
+                    >
+                      <option value="">{t("products.chooseColor")}</option>
+                      {colors.map((color) => (
+                        <option key={color.id} value={color.id}>
+                          {color.code} · {localizedName(locale, color.name, color.nameTh)}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-3 py-2">
                     <Input

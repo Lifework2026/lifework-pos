@@ -6,12 +6,13 @@ import { getStorageConfig } from "@/lib/storage";
 export const dynamic = "force-dynamic";
 
 export default async function EditProductPage({ params }: { params: { id: string } }) {
-  const [product, categories, sizes] = await Promise.all([
+  const [product, categories, colors, sizes] = await Promise.all([
     prisma.product.findUnique({
       where: { id: params.id },
       include: { variants: { orderBy: [{ color: "asc" }, { size: "asc" }] } },
     }),
     prisma.category.findMany({ select: { id: true, name: true, nameTh: true }, orderBy: { name: "asc" } }),
+    prisma.color.findMany({ select: { id: true, code: true, name: true, nameTh: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
     prisma.size.findMany({ select: { name: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
   ]);
   if (!product) notFound();
@@ -31,6 +32,7 @@ export default async function EditProductPage({ params }: { params: { id: string
       id: variant.id,
       size: variant.size,
       color: variant.color,
+      colorId: variant.colorId,
       sku: variant.sku,
       barcode: variant.barcode,
       price: variant.price.toFixed(2),
@@ -44,6 +46,7 @@ export default async function EditProductPage({ params }: { params: { id: string
     <ProductForm
       mode="edit"
       categories={categories}
+      colors={colors}
       sizes={sizes.map((size) => size.name)}
       storageReady={getStorageConfig() !== null}
       initial={initial}

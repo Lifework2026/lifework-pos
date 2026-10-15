@@ -108,4 +108,13 @@ test("printing tax invoices uses the A4 page and the receipt roll rule is gone",
   assert.ok(read("components/pos/print-receipt.tsx").includes('"a4"'));
 });
 
+test("master-data codes: colour routes are manager-only and categories require a code", () => {
+  for (const file of ["app/api/admin/colors/route.ts", "app/api/admin/colors/[id]/route.ts"]) {
+    assert.ok(read(file).includes("await requireManager()"), file + " must require a manager");
+  }
+  const createSchema = read("app/api/admin/categories/route.ts");
+  assert.ok(createSchema.includes("code: catalogCodeSchema"), "a category needs a code");
+  assert.ok(read("lib/master-schema.ts").includes("isValidCode"), "codes are checked with the shared rule");
+});
+
 console.log(`\n${passed} security guard groups passed`);

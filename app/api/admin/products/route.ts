@@ -8,13 +8,15 @@ import { randomStoreEan13 } from "@/lib/barcode";
 import { BARCODE_RULE_MESSAGE, isValidBarcode } from "@/lib/barcode-rules";
 import { defaultSku, ImageBindingError, validateImageBinding } from "@/lib/catalog/sku";
 import { ensureSizes } from "@/lib/catalog/sizes";
+import { colorNamesById } from "@/lib/master-data";
 import { slugify } from "@/lib/slug";
 
 export const dynamic = "force-dynamic";
 
 const variantSchema = z.object({
   size: z.string().trim().min(1).max(20),
-  color: z.string().trim().min(1).max(40),
+  /** The colour master record. Required. */
+  colorId: z.string().min(1, "Choose a colour.").max(64),
   sku: z.string().trim().min(1).max(40).optional().nullable(),
   barcode: z.string().trim().refine(isValidBarcode, BARCODE_RULE_MESSAGE).optional().nullable(),
   price: z.number().positive().max(1_000_000),
@@ -37,11 +39,11 @@ const productSchema = z
   .superRefine((value, ctx) => {
     const seen = new Set<string>();
     value.variants.forEach((variant, index) => {
-      const key = `${variant.size.toLowerCase()}|${variant.color.toLowerCase()}`;
+      const key = `${variant.size.toLowerCase()}|${variant.colorId}`;
       if (seen.has(key)) {
         ctx.addIssue({
           code: "custom",
-          message: `Size ${variant.size} / ${variant.color} is listed twice.`,
+          message: `Size ${variant.size} is listed twice in the same colour.`,
           path: ["variants", index],
         });
       }
@@ -91,15 +93,25 @@ export async function POST(request: NextRequest): Promise<Response> {
     let slug = baseSlug;
     for (let n = 2; taken.has(slug); n += 1) slug = `${baseSlug}-${n}`;
 
-    const resolved = input.variants.map((variant) => ({
-      size: variant.size,
-      color: variant.color,
-      price: variant.price,
-      cost: variant.cost ?? null,
-      initialStock: variant.initialStock,
-      sku: variant.sku ? variant.sku.toUpperCase() : defaultSku(input.name, variant.color, variant.size),
-      barcode: variant.barcode ?? randomStoreEan13(),
-    }));
+    // Colours come from the master data. An id that is not in the list is refused, never invented.
+    const colorNames = await colorNamesById(prisma, input.variants.map((variant) => variant.colorId));
+    for (const variant of input.variants) {
+      if (!colorNames.has(variant.colorId)) throw new ProductError(400, "COLOR_NOT_FOUND", "Choose a colour from the list.");
+    }
+
+    const resolved = input.variants.map((variant) => {
+      const colorName = colorNames.get(variant.colorId) ?? "";
+      return {
+        size: variant.size,
+        color: colorName,
+        colorId: variant.colorId,
+        price: variant.price,
+        cost: variant.cost ?? null,
+        initialStock: variant.initialStock,
+        sku: variant.sku ? variant.sku.toUpperCase() : defaultSku(input.name, colorName, variant.size),
+        barcode: variant.barcode ?? randomStoreEan13(),
+      };
+    });
 
     const skus = resolved.map((variant) => variant.sku);
     const barcodes = resolved.map((variant) => variant.barcode);
@@ -135,6 +147,7 @@ export async function POST(request: NextRequest): Promise<Response> {
               create: resolved.map((variant) => ({
                 size: variant.size,
                 color: variant.color,
+                colorId: variant.colorId,
                 sku: variant.sku,
                 barcode: variant.barcode,
                 price: variant.price,
