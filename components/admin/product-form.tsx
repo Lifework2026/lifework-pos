@@ -26,6 +26,7 @@ export interface InitialVariant {
   sku: string;
   barcode: string;
   price: string;
+  cost: string | null;
   stockQuantity: number;
   isActive: boolean;
 }
@@ -35,6 +36,7 @@ export interface InitialProduct {
   name: string;
   nameTh: string | null;
   brand: string | null;
+  promoTag: string | null;
   description: string | null;
   categoryId: string;
   isActive: boolean;
@@ -52,6 +54,7 @@ interface Row {
   sku: string;
   barcode: string;
   price: string;
+  cost: string;
   initialStock: string;
   stock: number;
   isActive: boolean;
@@ -68,7 +71,7 @@ interface ProductFormProps {
 let nextKey = 1;
 
 function newRow(): Row {
-  return { key: nextKey++, size: "", color: "", sku: "", barcode: "", price: "", initialStock: "0", stock: 0, isActive: true };
+  return { key: nextKey++, size: "", color: "", sku: "", barcode: "", price: "", cost: "", initialStock: "0", stock: 0, isActive: true };
 }
 
 function rowFromVariant(variant: InitialVariant): Row {
@@ -80,6 +83,7 @@ function rowFromVariant(variant: InitialVariant): Row {
     sku: variant.sku,
     barcode: variant.barcode,
     price: variant.price,
+    cost: variant.cost ?? "",
     initialStock: "0",
     stock: variant.stockQuantity,
     isActive: variant.isActive,
@@ -95,6 +99,7 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
   const [name, setName] = useState(initial?.name ?? "");
   const [nameTh, setNameTh] = useState(initial?.nameTh ?? "");
   const [brand, setBrand] = useState(initial?.brand ?? "");
+  const [promoTag, setPromoTag] = useState(initial?.promoTag ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? categories[0]?.id ?? "");
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
@@ -119,6 +124,7 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
       const n = index + 1;
       if (!row.size.trim() || !row.color.trim()) return t("products.errVariant", { n });
       if (!PRICE_PATTERN.test(row.price.trim()) || Number(row.price) <= 0) return t("products.errPrice", { n });
+      if (row.cost.trim() !== "" && !PRICE_PATTERN.test(row.cost.trim())) return t("products.errCost", { n });
       if (!row.id && (!/^\d+$/.test(row.initialStock.trim()) || Number(row.initialStock) < 0)) return t("products.errStock", { n });
       const key = `${row.size.trim().toLowerCase()}|${row.color.trim().toLowerCase()}`;
       if (seen.has(key)) return t("products.errDuplicate", { n });
@@ -148,6 +154,7 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
       sku: row.sku.trim() || null,
       barcode: row.barcode.trim() || null,
       price: Number(row.price),
+      cost: row.cost.trim() === "" ? null : Number(row.cost),
     }));
 
     const imageChanged = (image?.url ?? null) !== (initial?.imageUrl ?? null);
@@ -155,6 +162,7 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
       name: name.trim(),
       nameTh: nameTh.trim() || null,
       brand: brand.trim() || null,
+      promoTag: promoTag.trim() || null,
       description: description.trim() || null,
       categoryId,
       variants,
@@ -261,6 +269,11 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
             <span className="font-medium">{t("products.brand")}</span>
             <Input value={brand} onChange={(event) => setBrand(event.target.value)} maxLength={80} />
           </label>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium">{t("products.promoTag")}</span>
+            <Input value={promoTag} onChange={(event) => setPromoTag(event.target.value)} maxLength={30} placeholder="SALE, HOT, BUY 1 GET 1" />
+            <span className="text-xs text-muted-foreground">{t("products.promoTagHint")}</span>
+          </label>
           <label className="flex flex-col gap-1.5 text-sm md:col-span-2">
             <span className="font-medium">{t("products.description")}</span>
             <textarea
@@ -313,6 +326,7 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
                 <th className="px-3 py-2 font-medium">{t("products.colSku")}</th>
                 <th className="px-3 py-2 font-medium">{t("products.colBarcode")}</th>
                 <th className="px-3 py-2 font-medium">{t("products.colPrice")}</th>
+                <th className="px-3 py-2 font-medium">{t("products.colCost")}</th>
                 <th className="px-3 py-2 font-medium">{t("products.colStock")}</th>
                 <th className="px-3 py-2 font-medium">{mode === "edit" ? t("products.colActive") : ""}</th>
                 <th className="w-10 px-2" />
@@ -365,6 +379,17 @@ export function ProductForm({ mode, categories, sizes, storageReady, initial }: 
                       onChange={(event) => updateRow(row.key, { price: event.target.value })}
                       aria-label={`${t("products.colPrice")} ${index + 1}`}
                       className="h-9 w-28 text-right tabular-nums"
+                    />
+                  </td>
+                  <td className="px-3 py-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={row.cost}
+                      onChange={(event) => updateRow(row.key, { cost: event.target.value })}
+                      aria-label={`${t("products.colCost")} ${index + 1}`}
+                      className="h-9 w-24 text-right tabular-nums"
                     />
                   </td>
                   <td className="px-3 py-2">

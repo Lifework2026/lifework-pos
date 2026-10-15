@@ -20,6 +20,8 @@ const variantPatchSchema = z.object({
   sku: z.string().trim().min(1).max(40).optional().nullable(),
   barcode: z.string().trim().refine(isValidBarcode, BARCODE_RULE_MESSAGE).optional().nullable(),
   price: z.number().positive().max(1_000_000),
+  /** Unit cost. null clears it, absent leaves it. */
+  cost: z.number().nonnegative().max(1_000_000).nullable().optional(),
   isActive: z.boolean().optional(),
   /** New variants only. Existing stock changes go through the stock ledger. */
   initialStock: z.number().int().min(0).max(100_000).optional(),
@@ -27,6 +29,7 @@ const variantPatchSchema = z.object({
 
 const patchSchema = z.object({
   name: z.string().trim().min(1).max(150).optional(),
+  promoTag: z.string().trim().max(30).nullable().optional(),
   nameTh: z.string().trim().max(150).nullable().optional(),
   brand: z.string().trim().max(80).nullable().optional(),
   description: z.string().trim().max(2000).nullable().optional(),
@@ -97,7 +100,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         }
 
         const changedFields: string[] = [];
-        const setIfChanged = <K extends "name" | "nameTh" | "brand" | "description" | "categoryId" | "isActive">(
+        const setIfChanged = <K extends "name" | "nameTh" | "brand" | "description" | "categoryId" | "isActive" | "promoTag">(
           key: K,
           next: unknown,
           current: unknown,
@@ -114,6 +117,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
         setIfChanged("description", input.description === undefined ? undefined : input.description || null, product.description);
         setIfChanged("categoryId", input.categoryId, product.categoryId);
         setIfChanged("isActive", input.isActive, product.isActive);
+        setIfChanged("promoTag", input.promoTag === undefined ? undefined : input.promoTag || null, product.promoTag);
         if (productData.imageUrl !== undefined) changedFields.push("image");
 
         // Variants.
@@ -152,6 +156,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
             if (variant.color !== current.color) data.color = variant.color;
             if (variant.sku && variant.sku.toUpperCase() !== current.sku) data.sku = variant.sku.toUpperCase();
             if (variant.barcode && variant.barcode !== current.barcode) data.barcode = variant.barcode;
+            if (variant.cost !== undefined) {
+              const nextCost = variant.cost === null ? null : new Prisma.Decimal(variant.cost).toFixed(2);
+              const currentCost = current.cost === null ? null : priceOf(current.cost);
+              if (nextCost !== currentCost) data.cost = nextCost;
+            }
             if (priceOf(variant.price) !== priceOf(current.price)) {
               data.price = variant.price;
               priceChanges.push({ sku: current.sku, from: priceOf(current.price), to: priceOf(variant.price) });
@@ -172,6 +181,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
                 sku,
                 barcode: variant.barcode ?? randomStoreEan13(),
                 price: variant.price,
+                cost: variant.cost ?? null,
                 stockQuantity: stock,
               },
               select: { id: true },

@@ -20,6 +20,7 @@ const NAV_ITEMS: { href: string; key: MessageKey }[] = [
   { href: "/admin/inventory/receive", key: "nav.receive" },
   { href: "/admin/catalog", key: "nav.catalog" },
   { href: "/admin/members", key: "nav.members" },
+  { href: "/admin/excel", key: "nav.excel" },
   { href: "/admin/promotions", key: "nav.promotions" },
 ];
 

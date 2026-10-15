@@ -210,6 +210,8 @@ model Product {
   imageUrl    String?
   /// Object path inside the storage bucket, kept so the photo can be replaced or deleted.
   imagePath   String?
+  /// Short sales tag shown on the till, e.g. SALE, HOT, BUY 1 GET 1. Empty for none.
+  promoTag    String?
   description String?
   brand       String?
   isActive    Boolean  @default(true)
@@ -234,6 +236,8 @@ model ProductVariant {
   sku           String   @unique
   barcode       String   @unique
   price         Decimal  @db.Decimal(12, 2)
+  /// Unit cost, for margin reports. Optional.
+  cost          Decimal? @db.Decimal(12, 2)
   stockQuantity Int      @default(0)
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())

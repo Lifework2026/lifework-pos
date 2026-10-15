@@ -110,6 +110,18 @@ The Print button renders the receipt into a separate `#print-root` element and t
 2. In the browser's print dialog choose that printer, scale 100%, margins none, and turn off headers and footers. The page already asks for no margin.
 3. For one-click printing, start Chrome or Edge with `--kiosk-printing` so the dialog is skipped.
 
+## Excel bulk actions
+
+**Excel bulk actions** (managers) has three spreadsheets. Download each template, fill it in, press **Check file**, then **Import**. Nothing is saved until the check passes.
+
+- **A. New products:** `Barcode, SKU, Name_TH, Name_EN, Category, Size, Price, Cost, Initial_Stock, Promo_Tag`. Creates products, sizes and categories that do not exist yet.
+- **B. Price and promo update:** `Barcode, New_Price, Promo_Tag`, matched by barcode. Blank cells keep the current value. Each change is written to the audit log.
+- **C. Stock in and out:** `Barcode, Quantity_Change, Reason`. Reason `Restock` (above 0), `Damage` (below 0) or `Count` (non-zero). Each row is written to the stock history with its reason. A row that would take stock below zero stops the whole file.
+
+Row 2 of each template is an example with an `EXAMPLE-` barcode. Every importer refuses that row, so it cannot be imported by accident.
+
+**Product photos:** photos are stored in the Supabase Storage bucket named by `SUPABASE_STORAGE_BUCKET` (default `product-images`). To use another name, such as `products`, create the public bucket in Supabase Storage and set the variable to that name. `supabase/storage.sql` creates the default bucket.
+
 ## Tax invoices (ใบกำกับภาษีเต็มรูป)
 
 Managers issue a full tax invoice from **Sales → detail → ใบกำกับภาษี**. The buyer's name, branch (00000 for head office or a 5-digit branch number), address and 13-digit tax ID are required, and the tax ID's check digit is verified before sending. Each sale gets one invoice, numbered `TI-YYYYMM-NNNNN` (restarts each month), and the invoice is printed on A4 with the VAT split out of the VAT-inclusive total. Voided sales cannot be invoiced.

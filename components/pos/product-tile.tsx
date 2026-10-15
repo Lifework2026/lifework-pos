@@ -36,6 +36,7 @@ export const ProductTile = memo(function ProductTile({ variant, onSelect }: Prod
           <div className="flex items-start justify-between gap-2">
             <span className="line-clamp-2 font-medium leading-snug">{name}</span>
             {outOfStock ? <Badge variant="destructive">{t("pos.soldOut")}</Badge> : null}
+            {variant.product.promoTag ? <Badge className="bg-amber-500 text-white hover:bg-amber-500">{variant.product.promoTag}</Badge> : null}
           </div>
           <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
             <Badge variant="outline">{t("pos.size", { size: variant.size })}</Badge>

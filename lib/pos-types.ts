@@ -14,6 +14,7 @@ export interface VariantSummary {
     name: string;
     nameTh: string | null;
     imageUrl: string | null;
+    promoTag: string | null;
     brand: string | null;
     categoryId: string;
   };

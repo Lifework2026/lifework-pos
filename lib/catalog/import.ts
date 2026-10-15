@@ -54,7 +54,9 @@ type Field =
   | "color"
   | "barcode"
   | "brand"
-  | "description";
+  | "description"
+  | "cost"
+  | "promoTag";
 
 const HEADER_ALIASES: Record<string, Field> = {
   sku: "sku",
@@ -74,6 +76,11 @@ const HEADER_ALIASES: Record<string, Field> = {
   qty: "stock",
   quantity: "stock",
   initialstock: "stock",
+  nameen: "name",
+  cost: "cost",
+  unitcost: "cost",
+  promotag: "promoTag",
+  promo: "promoTag",
   color: "color",
   colour: "color",
   barcode: "barcode",
@@ -95,6 +102,8 @@ const FIELD_LABELS: Record<Field, string> = {
   barcode: "Barcode",
   brand: "Brand",
   description: "Description",
+  cost: "Cost",
+  promoTag: "Promo_Tag",
 };
 
 export interface ImportRow {
@@ -113,6 +122,10 @@ export interface ImportRow {
   barcode: string | null;
   brand: string | null;
   description: string | null;
+  /** Unit cost in satang, or null when the Cost cell was blank. */
+  costSatang: number | null;
+  /** Short sales tag, or null when blank. */
+  promoTag: string | null;
 }
 
 export interface ImportIssue {
@@ -178,6 +191,8 @@ export function parseImportTable(table: string[][]): ParsedImport {
     const problems: string[] = [];
 
     const sku = get("sku").toUpperCase();
+    // The sample row in the downloaded template starts with EXAMPLE-. It must be deleted, never imported.
+    if (sku.startsWith("EXAMPLE-")) problems.push("This is the example row from the template. Delete it, then upload again.");
     if (!/^[A-Z0-9][A-Z0-9._-]{0,39}$/.test(sku)) problems.push("SKU must be 1 to 40 letters, digits, dots, dashes or underscores.");
 
     const name = get("name");
@@ -227,6 +242,21 @@ export function parseImportTable(table: string[][]): ParsedImport {
       else barcode = barcodeText;
     }
 
+    let costSatang: number | null = null;
+    const costText = get("cost").replace(/[,฿s]/g, "");
+    if (costText) {
+      try {
+        costSatang = bahtToSatang(costText);
+        if (costSatang > 100_000_000) problems.push("Cost is too large.");
+      } catch (err) {
+        if (err instanceof PricingError) problems.push("Cost must be a number with at most 2 decimals.");
+        else throw err;
+      }
+    }
+
+    const promoTag = get("promoTag") || null;
+    if (promoTag && promoTag.length > 30) problems.push("Promo_Tag is longer than 30 characters.");
+
     const brand = get("brand") || null;
     if (brand && brand.length > 80) problems.push("Brand is longer than 80 characters.");
     const description = get("description") || null;
@@ -251,6 +281,8 @@ export function parseImportTable(table: string[][]): ParsedImport {
       barcode,
       brand,
       description,
+      costSatang,
+      promoTag,
     });
   });
 
@@ -313,6 +345,7 @@ interface PlannedProduct {
   brand: string | null;
   description: string | null;
   categoryId: string;
+  promoTag: string | null;
 }
 
 interface PlannedVariant {
@@ -323,6 +356,7 @@ interface PlannedVariant {
   size: string;
   color: string;
   priceSatang: number;
+  costSatang: number | null;
   stock: number;
   line: number;
 }
@@ -335,7 +369,9 @@ interface PlannedUpdate {
   priceBeforeSatang: number;
   priceAfterSatang: number;
   barcode: string | null;
-  productPatch: { nameTh?: string; brand?: string; description?: string };
+  /** null leaves the cost unchanged. */
+  costAfterSatang: number | null;
+  productPatch: { nameTh?: string; brand?: string; description?: string; promoTag?: string };
   stockChange: { before: number; after: number } | null;
 }
 
@@ -437,10 +473,12 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
         priceBeforeSatang: Math.round(Number(existing.price) * 100),
         priceAfterSatang: row.priceSatang,
         barcode: row.barcode,
+        costAfterSatang: row.costSatang,
         productPatch: {
           ...(row.nameTh ? { nameTh: row.nameTh } : {}),
           ...(row.brand ? { brand: row.brand } : {}),
           ...(row.description ? { description: row.description } : {}),
+          ...(row.promoTag ? { promoTag: row.promoTag } : {}),
         },
         stockChange:
           options.applyStock && row.stock !== null && row.stock !== currentStock ? { before: currentStock, after: row.stock } : null,
@@ -487,8 +525,11 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
           brand: row.brand,
           description: row.description,
           categoryId: category.id,
+          promoTag: row.promoTag,
         };
         newProducts.set(slug, planned);
+      } else if (row.promoTag && !planned.promoTag) {
+        planned.promoTag = row.promoTag;
       }
       productId = planned.id;
     }
@@ -501,6 +542,7 @@ export async function planImport(db: Prisma.TransactionClient, rows: ImportRow[]
       size: row.size,
       color: row.color,
       priceSatang: row.priceSatang,
+      costSatang: row.costSatang,
       stock: row.stock ?? 0,
       line: row.line,
     };
@@ -576,6 +618,7 @@ export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPla
         brand: p.brand,
         description: p.description,
         categoryId: p.categoryId,
+        promoTag: p.promoTag,
       })),
     });
   }
@@ -589,6 +632,7 @@ export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPla
         sku: v.sku,
         barcode: v.barcode,
         price: satangToDecimal(v.priceSatang),
+        cost: v.costSatang === null ? null : satangToDecimal(v.costSatang),
         stockQuantity: v.stock,
       })),
     });
@@ -617,6 +661,7 @@ export async function commitImport(tx: Prisma.TransactionClient, plan: ImportPla
       where: { id: update.variantId },
       data: {
         price: satangToDecimal(update.priceAfterSatang),
+        ...(update.costAfterSatang !== null ? { cost: satangToDecimal(update.costAfterSatang) } : {}),
         ...(update.barcode ? { barcode: update.barcode } : {}),
         ...(update.stockChange ? { stockQuantity: update.stockChange.after } : {}),
       },
