@@ -32,23 +32,34 @@ export const MATRIX_CATEGORIES: MatrixCategory[] = [
   { code: "SP", name: "Supplies", nameTh: "วัสดุสิ้นเปลือง", slug: "supplies" },
 ];
 
-/** ST is the colour for items with no colour, such as shopping bags. */
+/**
+ * The standard colour catalogue, as the colour sheet lists it: two-digit codes 00 to 23. Names are unique, so the
+ * database refuses a second colour with the same name. Items with no colour, such as shopping bags, use a Standard
+ * colour that the seed creates outside this list. Client-safe.
+ */
 export const MATRIX_COLORS: MatrixColor[] = [
-  { code: "ST", name: "Standard", nameTh: "มาตรฐาน" },
-  { code: "WH", name: "White", nameTh: "ขาว" },
-  { code: "BK", name: "Black", nameTh: "ดำ" },
-  { code: "GY", name: "Grey", nameTh: "เทา" },
-  { code: "NV", name: "Navy", nameTh: "กรมท่า" },
-  { code: "BL", name: "Blue", nameTh: "น้ำเงิน" },
-  { code: "IN", name: "Indigo", nameTh: "คราม" },
-  { code: "BE", name: "Beige", nameTh: "เบจ" },
-  { code: "KH", name: "Khaki", nameTh: "กากี" },
-  { code: "SD", name: "Sand", nameTh: "ทราย" },
-  { code: "OL", name: "Olive", nameTh: "เขียวมะกอก" },
-  { code: "GN", name: "Green", nameTh: "เขียว" },
-  { code: "BR", name: "Brown", nameTh: "น้ำตาล" },
-  { code: "RD", name: "Red", nameTh: "แดง" },
-  { code: "PK", name: "Pink", nameTh: "ชมพู" },
-  { code: "OR", name: "Orange", nameTh: "ส้ม" },
-  { code: "YL", name: "Yellow", nameTh: "เหลือง" },
+  { code: "00", name: "White", nameTh: "ขาว" },
+  { code: "01", name: "Off White", nameTh: "ขาวนวล" },
+  { code: "02", name: "Ivory", nameTh: "งาช้าง" },
+  { code: "03", name: "Red", nameTh: "แดง" },
+  { code: "04", name: "Burgundy", nameTh: "แดงเลือดหมู" },
+  { code: "05", name: "Wine", nameTh: "ไวน์" },
+  { code: "06", name: "Light Pink", nameTh: "ชมพูอ่อน" },
+  { code: "07", name: "Pink", nameTh: "ชมพู" },
+  { code: "08", name: "Coral", nameTh: "ส้มปะการัง" },
+  { code: "09", name: "Orange", nameTh: "ส้ม" },
+  { code: "10", name: "Beige", nameTh: "เบจ" },
+  { code: "11", name: "Sand", nameTh: "ทราย" },
+  { code: "12", name: "Brown", nameTh: "น้ำตาล" },
+  { code: "13", name: "Yellow", nameTh: "เหลือง" },
+  { code: "14", name: "Dark Beige", nameTh: "เบจเข้ม" },
+  { code: "15", name: "Lime", nameTh: "เขียวมะนาว" },
+  { code: "16", name: "Neon", nameTh: "นีออน" },
+  { code: "17", name: "Mint", nameTh: "มินต์" },
+  { code: "18", name: "Green", nameTh: "เขียว" },
+  { code: "19", name: "Dark Green", nameTh: "เขียวเข้ม" },
+  { code: "20", name: "Light Khaki", nameTh: "กากีอ่อน" },
+  { code: "21", name: "Khaki", nameTh: "กากี" },
+  { code: "22", name: "Dark Khaki", nameTh: "กากีเข้ม" },
+  { code: "23", name: "Sky Blue", nameTh: "ฟ้า" },
 ];

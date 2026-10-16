@@ -24,12 +24,12 @@ async function test(name: string, fn: () => void | Promise<void>): Promise<void>
     assert.equal(new Set(colorCodes).size, colorCodes.length, "colour codes are unique");
   });
 
-  await test("matrix: 00 is Short-Sleeved T-Shirt and WH is White, as the setup guide says", () => {
+  await test("matrix: 00 is Short-Sleeved T-Shirt, and colour 00 is White", () => {
     const category = MATRIX_CATEGORIES.find((c) => c.code === "00");
-    const colour = MATRIX_COLORS.find((c) => c.code === "WH");
+    const colour = MATRIX_COLORS.find((c) => c.code === "00");
     assert.equal(category?.name, "Short-Sleeved T-Shirt");
     assert.equal(colour?.name, "White");
-    assert.equal(MATRIX_COLORS.find((c) => c.code === "BK")?.name, "Black");
+    assert.equal(MATRIX_COLORS.find((c) => c.code === "23")?.name, "Sky Blue");
   });
 
   await test("matrix: colour names are unique, because the database requires it", () => {

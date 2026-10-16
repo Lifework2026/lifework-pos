@@ -35,7 +35,7 @@ const json = (method: string, body: unknown) => ({
 });
 
 /**
- * Colour master data. Every colour has a unique code (for example BK) that spreadsheets use, and a name that
+ * Colour master data. Every colour has a unique code (for example 00) that spreadsheets use, and a name that
  * the till and receipts show. Renaming a colour renames it on every variant.
  */
 export function ColorsManager() {
@@ -135,7 +135,7 @@ export function ColorsManager() {
               id="colors-new-code"
               value={newCode}
               onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-              placeholder="BK"
+              placeholder="00"
               aria-label={t("colors.code")}
               maxLength={20}
               className="font-mono"

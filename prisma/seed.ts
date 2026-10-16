@@ -166,6 +166,15 @@ async function seedDefaultColors(): Promise<void> {
   }
 }
 
+/** Items with no colour, such as shopping bags, use Standard. It sits outside the numbered colour list. */
+async function ensureStandardColor() {
+  return prisma.color.upsert({
+    where: { code: "ST" },
+    update: {},
+    create: { code: "ST", name: "Standard", nameTh: "มาตรฐาน", sortOrder: 0 },
+  });
+}
+
 async function seedBags(): Promise<void> {
   const category = await prisma.category.upsert({
     where: { slug: "supplies" },
@@ -193,7 +202,7 @@ async function seedBags(): Promise<void> {
         productId: product.id,
         size: bag.size,
         color: "Standard",
-        colorId: (await prisma.color.findUniqueOrThrow({ where: { code: "ST" }, select: { id: true } })).id,
+        colorId: (await ensureStandardColor()).id,
         sku: bag.sku,
         barcode: bag.barcode,
         price: bag.price,
@@ -202,6 +211,13 @@ async function seedBags(): Promise<void> {
     });
     console.log(`Created ${bag.sku} with 500 units.`);
   }
+}
+
+/** Demo variants whose colour is not in the list fall back to Standard. */
+function requireStandardColor(byName: Map<string, string>): string {
+  const id = byName.get("Standard");
+  if (!id) throw new Error("The Standard colour is missing.");
+  return id;
 }
 
 async function seedDemoCatalog(): Promise<number> {
@@ -245,7 +261,7 @@ async function seedDemoCatalog(): Promise<number> {
             productId: product.id,
             size: v.size,
             color: v.color,
-            colorId: colorIdByName.get(v.color) ?? (() => { throw new Error(`No colour ${v.color}`); })(),
+            colorId: colorIdByName.get(v.color) ?? requireStandardColor(colorIdByName),
             sku,
             barcode,
             price: v.price,

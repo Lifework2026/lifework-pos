@@ -52,25 +52,24 @@ const legacyColors = [
     assert.ok(!plan.createCategories.some((c) => c.code === "02"));
   });
 
-  await test("colours: legacy names become matrix codes, a matching code is unchanged, the rest are created", () => {
-    const plan = planMatrixSync([], [...legacyColors, { id: "k-wh", code: "WH", name: "Other" }]);
-    assert.ok(plan.renameColors.some((r) => r.id === "k-white" && r.to === "WH") === false, "WH already exists, so no rename");
-    const rename = planMatrixSync([], legacyColors);
-    assert.deepEqual(
-      rename.renameColors.map((r) => [r.from, r.to]),
-      [
-        ["COL-STD", "ST"],
-        ["COL-WHT", "WH"],
-        ["COL-GRY", "GY"],
-      ],
-    );
-    assert.ok(rename.createColors.some((c) => c.code === "BK"), "Black is created, since no legacy row has that name");
+  await test("colours: the legacy White becomes 00, and rows that are not in the list are left alone", () => {
+    const plan = planMatrixSync([], legacyColors);
+    assert.deepEqual(plan.renameColors.map((r) => [r.from, r.to]), [["COL-WHT", "00"]]);
+    assert.ok(!plan.renameColors.some((r) => r.id === "k-std" || r.id === "k-grey"), "Standard and Grey are not in the list");
+    assert.ok(plan.createColors.some((c) => c.code === "01" && c.name === "Off White"));
+    assert.ok(!plan.createColors.some((c) => c.name === "White"), "White is not created twice");
   });
 
-  await test("colours: a name held by an unrelated code with no matrix entry is renamed, never duplicated", () => {
-    const plan = planMatrixSync([], [{ id: "k", code: "XYZ", name: "navy" }]);
-    assert.deepEqual(plan.renameColors.map((r) => [r.from, r.to]), [["XYZ", "NV"]]);
-    assert.ok(!plan.createColors.some((c) => c.code === "NV"));
+  await test("colours: a name held by an unrelated code is renamed to its list code, never duplicated", () => {
+    const plan = planMatrixSync([], [{ id: "k", code: "XYZ", name: "sky blue" }]);
+    assert.deepEqual(plan.renameColors.map((r) => [r.from, r.to]), [["XYZ", "23"]]);
+    assert.ok(!plan.createColors.some((c) => c.code === "23"));
+  });
+
+  await test("colours: a code already in the list is unchanged", () => {
+    const plan = planMatrixSync([], [{ id: "k", code: "00", name: "White" }]);
+    assert.ok(plan.unchanged.includes("colour 00"));
+    assert.equal(plan.renameColors.length, 0);
   });
 
   await test("the plan never removes a row, so every legacy id appears at most once as a rename", () => {

@@ -160,7 +160,7 @@ async function parseWorkbook(rows: (string | number)[][]) {
     assert.equal(example[4], "01");
     assert.equal(example[5], "BK");
     assert.equal(TEMPLATES.D.example(MASTER)[0], "00");
-    assert.equal(TEMPLATES.E.example(MASTER)[0], "BK");
+    assert.equal(TEMPLATES.E.example(MASTER)[0], "00");
   });
 
   console.log(`\n${passed} leading-zero groups passed`);
