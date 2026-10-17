@@ -17,7 +17,7 @@ export async function readImageUpload(request: Request): Promise<{ bytes: Uint8A
   if (!(file instanceof File)) return { response: apiError(400, "FILE_REQUIRED", "Choose a photo to upload.") };
   if (file.size === 0) return { response: apiError(400, "FILE_EMPTY", "The photo is empty.") };
   if (file.size > MAX_IMAGE_BYTES) {
-    return { response: apiError(413, "FILE_TOO_LARGE", `The photo is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`) };
+    return { response: apiError(413, "FILE_TOO_LARGE", `The photo is larger than ${Math.round(MAX_IMAGE_BYTES / 1000)} KB.`) };
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());

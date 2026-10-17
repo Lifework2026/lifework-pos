@@ -6,6 +6,7 @@ import { CheckCircle2, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { ProductThumb } from "@/components/pos/product-thumb";
 import { Button } from "@/components/ui/button";
 import { prepareProductPhoto } from "@/lib/client-image";
+import { formatBytes, PhotoCompressionError } from "@/lib/image-compress";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { ApiErrorBody } from "@/lib/pos-types";
@@ -31,6 +32,7 @@ interface ProductImageFieldProps {
 
 type Status =
   | { kind: "idle" }
+  | { kind: "compressing" }
   | { kind: "uploading" }
   | { kind: "removing" }
   | { kind: "saved"; message: string }
@@ -51,7 +53,7 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
   const inputRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
-  const busy = status.kind === "uploading" || status.kind === "removing";
+  const busy = status.kind === "compressing" || status.kind === "uploading" || status.kind === "removing";
 
   // A success message fades away on its own. An error stays until the next action.
   useEffect(() => {
@@ -61,11 +63,12 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
   }, [status]);
 
   async function handleFile(file: File): Promise<void> {
-    setStatus({ kind: "uploading" });
+    setStatus({ kind: "compressing" });
     try {
       const prepared = await prepareProductPhoto(file);
+      setStatus({ kind: "uploading" });
       const form = new FormData();
-      form.append("file", prepared);
+      form.append("file", prepared.file);
       const endpoint = saveUrl ?? "/api/admin/uploads/product-image";
       const res = await fetch(endpoint, { method: "POST", body: form });
       const body = (await res.json().catch(() => null)) as (Partial<ProductImage> & ApiErrorBody) | null;
@@ -75,11 +78,15 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
         return;
       }
       onChange({ url: body.url, path: body.path });
-      setStatus({ kind: "saved", message: saveUrl ? t("img.savedToProduct") : t("img.readyToSave") });
+      const saved = saveUrl ? t("img.savedToProduct") : t("img.readyToSave");
+      const shrunk = t("img.compressed", { from: formatBytes(prepared.fromBytes), to: formatBytes(prepared.toBytes) });
+      setStatus({ kind: "saved", message: `${saved} ${shrunk}` });
       // The saved photo also shows in the product list, so refresh the server-rendered pages.
       if (saveUrl) router.refresh();
-    } catch {
-      setStatus({ kind: "error", message: t("img.failed") });
+    } catch (err) {
+      const key: MessageKey =
+        err instanceof PhotoCompressionError ? (err.code === "UNREADABLE" ? "img.unreadable" : "img.cannotCompress") : "img.failed";
+      setStatus({ kind: "error", message: t(key) });
     } finally {
       if (inputRef.current) inputRef.current.value = "";
     }
@@ -131,7 +138,7 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
             disabled={disabled || busy || !storageReady}
             onClick={() => inputRef.current?.click()}
           >
-            {status.kind === "uploading" ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+            {status.kind === "compressing" || status.kind === "uploading" ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
             {value ? t("img.replace") : t("img.choose")}
           </Button>
           {value ? (
@@ -146,9 +153,9 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
         <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t("img.notConfigured")}</p>
       ) : null}
       <div aria-live="polite" className="min-h-5">
-        {status.kind === "uploading" ? (
+        {status.kind === "compressing" || status.kind === "uploading" ? (
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" /> {t("img.uploading")}
+            <Loader2 className="size-4 animate-spin" /> {t(status.kind === "compressing" ? "img.compressing" : "img.uploading")}
           </p>
         ) : null}
         {status.kind === "removing" ? (

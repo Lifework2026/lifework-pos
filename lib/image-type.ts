@@ -1,6 +1,7 @@
 /** Product photo rules. Client-safe: only reads bytes, no Node APIs. */
 
-export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+/** The hard limit for a stored photo: 150 KB, so thousands of photos fit in the 1 GB free storage. */
+export const MAX_IMAGE_BYTES = 150_000;
 export const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"] as const;
 
 export interface DetectedImage {

@@ -37,3 +37,7 @@ next-env.d.ts
 
 # Secrets
 .env
+
+# Database backups must never be committed, even by accident
+*.dump
+*.dump.gpg

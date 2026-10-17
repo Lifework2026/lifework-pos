@@ -90,7 +90,7 @@ const WITHOUT: ProductImageRecord = { id: "p1", imageUrl: null, imagePath: null 
     await assert.rejects(() => removeProductImage(fakes(null).db, store, "missing"), ProductImageNotFound);
   });
 
-  await test("bucket script: public bucket with the same limits as the app, public read, authenticated insert and update", () => {
+  await test("bucket script: public bucket with the same limits as the app and public read as the only policy", () => {
     const sql = read("supabase/storage-product-images.sql");
     const code = sql
       .split("\n")
@@ -100,19 +100,24 @@ const WITHOUT: ProductImageRecord = { id: "p1", imageUrl: null, imagePath: null 
     for (const type of ALLOWED_IMAGE_TYPES) assert.ok(code.includes(`'${type}'`), `${type} is allowed`);
     assert.ok(code.includes("on conflict (id) do update"), "the bucket step can run again");
     assert.match(code, /create policy "product-images: public read"[\s\S]*?for select[\s\S]*?to public[\s\S]*?bucket_id = 'product-images'/);
-    assert.match(code, /create policy "product-images: authenticated insert"[\s\S]*?for insert[\s\S]*?to authenticated[\s\S]*?with check \(bucket_id = 'product-images'\)/);
-    assert.match(code, /create policy "product-images: authenticated update"[\s\S]*?for update[\s\S]*?to authenticated[\s\S]*?using \(bucket_id = 'product-images'\)[\s\S]*?with check \(bucket_id = 'product-images'\)/);
-    assert.equal((code.match(/drop policy if exists/g) ?? []).length, 3, "each policy is dropped and created again");
+    assert.equal((code.match(/create policy/g) ?? []).length, 1, "public read is the only policy created");
+    assert.ok(!/for\s+(insert|update|delete|all)\b/i.test(code), "no write policy of any kind");
+    assert.ok(!/to\s+(authenticated|anon)\b/i.test(code), "nothing is granted to authenticated or anon");
+    for (const old of ["authenticated insert", "authenticated update"]) {
+      assert.ok(code.includes(`drop policy if exists "product-images: ${old}" on storage.objects;`), `the old ${old} policy is dropped`);
+    }
+    assert.equal((code.match(/drop policy if exists/g) ?? []).length, 3, "public read is recreated and both old write policies are dropped");
+    assert.equal(MAX_IMAGE_BYTES, 150_000, "the bucket limit is 150 KB");
   });
 
-  await test("bucket script: it deletes nothing and says plainly what the authenticated policies allow", () => {
+  await test("bucket script: it deletes no photo and says plainly that only the server can write", () => {
     const sql = read("supabase/storage-product-images.sql");
     const code = sql
       .split("\n")
       .filter((line) => !line.trim().startsWith("--"))
       .join("\n");
     assert.ok(!/delete\s+from|truncate|drop\s+table|drop\s+schema|alter\s+table/i.test(code));
-    assert.ok(sql.includes("SECURITY NOTE") && sql.includes("Allow new users to sign up"));
+    assert.ok(sql.includes("service-role key") && sql.includes("NOBODY BUT THE SERVER CAN WRITE"));
   });
 
   await test("filter: values from the address are cleaned", () => {

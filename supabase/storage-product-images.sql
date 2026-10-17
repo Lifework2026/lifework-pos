@@ -1,22 +1,23 @@
 -- Supabase Storage for product photos.
 --
 -- Run it once in the Supabase SQL editor (Project > SQL Editor > New query). It is safe to run again: the bucket
--- is created or updated, and each policy is dropped and created again. Nothing is deleted.
+-- is created or updated, and the policies are dropped and created again. No photo is deleted.
 --
 -- HOW THE APP USES THIS BUCKET
---   The server uploads photos with the service-role key, which bypasses row level security. The browser only reads
---   public URLs. So the app works with or without the two "authenticated" write policies in section 3.
+--   The server uploads and deletes photos with the service-role key, which bypasses row level security. The browser
+--   only reads public URLs. So the only policy the bucket needs is public read.
 --
--- SECURITY NOTE ABOUT SECTION 3
---   "authenticated" means ANY Supabase Auth user, and this app does not use Supabase Auth for its own logins.
---   If Authentication > Providers > Email > "Allow new users to sign up" is on, anyone who has the public anon key
---   can create an account and then upload or overwrite files in this bucket. Either turn sign-ups off, or remove the
---   two write policies with the statements at the end of this file. The app does not need them.
+-- SECURITY: NOBODY BUT THE SERVER CAN WRITE
+--   There is deliberately no insert, update or delete policy for "authenticated" or "anon". "authenticated" means ANY
+--   Supabase Auth user, and this app does not use Supabase Auth for its own logins, so a write policy for that role
+--   would let anyone who signs up with the public anon key add or overwrite files. Section 3 removes the two write
+--   policies that an earlier version of this script created.
 
--- 1. The bucket: public read, 2 MB per file, images only.
---    These limits match MAX_IMAGE_BYTES and ALLOWED_IMAGE_TYPES in lib/image-type.ts.
+-- 1. The bucket: public read, 150 KB per file, images only.
+--    These limits match MAX_IMAGE_BYTES and ALLOWED_IMAGE_TYPES in lib/image-type.ts. The browser shrinks every photo
+--    to WebP under 150 KB before it is uploaded (lib/image-compress.ts).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('product-images', 'product-images', true, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+values ('product-images', 'product-images', true, 150000, array['image/jpeg', 'image/png', 'image/webp'])
 on conflict (id) do update
   set public = excluded.public,
       file_size_limit = excluded.file_size_limit,
@@ -30,22 +31,6 @@ create policy "product-images: public read"
   to public
   using (bucket_id = 'product-images');
 
--- 3. Authenticated users can add and replace photos in this bucket only. See the security note above.
+-- 3. Remove the write policies an earlier version of this script created. Nothing replaces them.
 drop policy if exists "product-images: authenticated insert" on storage.objects;
-create policy "product-images: authenticated insert"
-  on storage.objects
-  for insert
-  to authenticated
-  with check (bucket_id = 'product-images');
-
 drop policy if exists "product-images: authenticated update" on storage.objects;
-create policy "product-images: authenticated update"
-  on storage.objects
-  for update
-  to authenticated
-  using (bucket_id = 'product-images')
-  with check (bucket_id = 'product-images');
-
--- To remove the write policies later (the app keeps working, because the server uses the service-role key):
---   drop policy if exists "product-images: authenticated insert" on storage.objects;
---   drop policy if exists "product-images: authenticated update" on storage.objects;

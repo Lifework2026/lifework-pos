@@ -1,9 +1,5 @@
 /** Browser-only image helpers for product photos. */
-
-const MAX_DIMENSION = 1200;
-const JPEG_QUALITY = 0.85;
-/** Photos already this small and within the size limit are uploaded untouched. */
-const SKIP_RESIZE_BELOW_BYTES = 250 * 1024;
+import { compressToTarget, PhotoCompressionError } from "@/lib/image-compress";
 
 function loadImage(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -15,36 +11,48 @@ function loadImage(file: File): Promise<HTMLImageElement> {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("The file is not a readable image."));
+      reject(new PhotoCompressionError("UNREADABLE", "The file is not a readable image."));
     };
     image.src = url;
   });
 }
 
-/**
- * Shrinks a photo to at most 1200 px on the long side and re-encodes it as JPEG. Phone photos are
- * often 4-8 MB, which is slow to upload and over the server's limit. Transparent areas become white.
- */
-export async function prepareProductPhoto(file: File): Promise<File> {
-  if (file.size <= SKIP_RESIZE_BELOW_BYTES && file.type === "image/jpeg") return file;
+export interface PreparedPhoto {
+  file: File;
+  fromBytes: number;
+  toBytes: number;
+}
 
+/**
+ * Shrinks every photo before it is uploaded: at most 800 px on the long side, WebP, under 150 KB (JPEG only in a
+ * browser that cannot encode WebP). Phone photos are often 4-8 MB, and the free storage plan holds 1 GB. Transparent
+ * areas become white. Even a small photo is re-encoded, so every stored file follows the same rules.
+ */
+export async function prepareProductPhoto(file: File): Promise<PreparedPhoto> {
   const image = await loadImage(file);
-  const scale = Math.min(1, MAX_DIMENSION / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
 
   const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
   const context = canvas.getContext("2d");
-  if (!context) return file;
-  context.fillStyle = "#ffffff";
-  context.fillRect(0, 0, width, height);
-  context.drawImage(image, 0, 0, width, height);
+  if (!context) throw new PhotoCompressionError("ENCODE_FAILED", "The browser cannot draw the photo.");
 
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY));
-  if (!blob) return file;
-  // Keep the original if re-encoding somehow made it larger.
-  if (blob.size >= file.size && file.type === "image/jpeg") return file;
-  return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
+  let mime = "image/webp";
+  const encode = async (width: number, height: number, quality: number): Promise<Blob | null> => {
+    canvas.width = width;
+    canvas.height = height;
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    let blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, quality));
+    // A browser that cannot encode WebP quietly returns PNG, which is far too large. Use JPEG instead.
+    if (blob && mime === "image/webp" && blob.type !== "image/webp") {
+      mime = "image/jpeg";
+      blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, quality));
+    }
+    return blob;
+  };
+
+  const { encoded } = await compressToTarget(encode, { width: image.naturalWidth, height: image.naturalHeight });
+  const extension = encoded.type === "image/webp" ? "webp" : "jpg";
+  const name = file.name.replace(/\.[^.]+$/, "") || "photo";
+  return { file: new File([encoded], `${name}.${extension}`, { type: encoded.type }), fromBytes: file.size, toBytes: encoded.size };
 }
