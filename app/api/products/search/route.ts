@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { apiError, formatMoney } from "@/lib/api";
 import type { VariantSummary } from "@/lib/pos-types";
+import { variantImageUrl } from "@/lib/catalog/variant-image";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +33,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         barcode: true,
         size: true,
         color: true,
+        colorId: true,
         price: true,
         stockQuantity: true,
         isActive: true,
@@ -42,6 +44,7 @@ export async function GET(request: NextRequest): Promise<Response> {
             brand: true,
             nameTh: true,
             imageUrl: true,
+            colorImages: { select: { colorId: true, imageUrl: true } },
             promoTag: true,
             categoryId: true,
             isActive: true,
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           name: variant.product.name,
           brand: variant.product.brand,
           nameTh: variant.product.nameTh,
-          imageUrl: variant.product.imageUrl,
+          imageUrl: variantImageUrl(variant.product, variant.colorId),
           promoTag: variant.product.promoTag,
           categoryId: variant.product.categoryId,
         },

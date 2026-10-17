@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
 import { requireUser } from "@/lib/api-helpers";
 import type { HeldPayload, ResumedBill, ResumedItem, ResumeWarning } from "@/lib/held-bills";
+import { variantImageUrl } from "@/lib/catalog/variant-image";
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +34,11 @@ export async function POST(_request: Request, { params }: { params: { id: string
         barcode: true,
         size: true,
         color: true,
+        colorId: true,
         price: true,
         stockQuantity: true,
         isActive: true,
-        product: { select: { name: true, nameTh: true, imageUrl: true, isActive: true } },
+        product: { select: { name: true, nameTh: true, imageUrl: true, colorImages: { select: { colorId: true, imageUrl: true } }, isActive: true } },
       },
     });
     const byId = new Map(variants.map((variant) => [variant.id, variant]));
@@ -64,7 +66,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
         variantId: variant.id,
         name: variant.product.name,
         nameTh: variant.product.nameTh,
-        imageUrl: variant.product.imageUrl,
+        imageUrl: variantImageUrl(variant.product, variant.colorId),
         size: variant.size,
         color: variant.color,
         sku: variant.sku,

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import type { Prisma } from "@prisma/client";
 import { ActionBar } from "@/components/admin/action-bar";
 import { ProductFilters } from "@/components/admin/product-filters";
 import { ProductThumb } from "@/components/pos/product-thumb";
 import { parseProductFilter, productWhere, type ProductFilterParams } from "@/lib/catalog/product-filter";
+import { photoCoverage, variantImageUrl } from "@/lib/catalog/variant-image";
 import { prisma } from "@/lib/prisma";
 import { formatBaht } from "@/lib/format";
 import { getServerLocale, serverT } from "@/lib/i18n/server";
@@ -22,9 +24,18 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
   const locale = getServerLocale();
   const t = serverT(locale);
   const filter = parseProductFilter(searchParams);
-  const where = productWhere(filter);
+  let where: Prisma.ProductWhereInput = productWhere(filter);
+  // "No photo yet" means a colour that shows no photo: it has none of its own and the product has none either.
+  // That cannot be written as one query, so the products that match the other filters are checked here.
+  if (filter.image === "missing") {
+    const candidates = await prisma.product.findMany({
+      where,
+      select: { id: true, imageUrl: true, variants: { select: { colorId: true } }, colorImages: { select: { colorId: true } } },
+    });
+    where = { ...where, id: { in: candidates.filter((candidate) => photoCoverage(candidate).missing > 0).map((candidate) => candidate.id) } };
+  }
 
-  const [products, total, categories, colorCount] = await Promise.all([
+  const [products, total, categories, colors] = await Promise.all([
     prisma.product.findMany({
       where,
       orderBy: { name: "asc" },
@@ -35,11 +46,13 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         nameTh: true,
         brand: true,
         imageUrl: true,
+        colorImages: { select: { colorId: true, imageUrl: true } },
         isActive: true,
         category: { select: { code: true, name: true, nameTh: true } },
         variants: {
           orderBy: [{ size: "asc" }],
           select: {
+            colorId: true,
             sku: true,
             barcode: true,
             size: true,
@@ -53,7 +66,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
     }),
     prisma.product.count({ where }),
     prisma.category.findMany({ select: { code: true, name: true, nameTh: true }, orderBy: { code: "asc" } }),
-    prisma.color.count(),
+    prisma.color.findMany({ select: { code: true, name: true, nameTh: true }, orderBy: [{ sortOrder: "asc" }, { code: "asc" }] }),
   ]);
 
   const linkButton = "inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted";
@@ -73,13 +86,21 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
         </div>
       </div>
 
-      {categories.length === 0 || colorCount === 0 ? (
+      {categories.length === 0 || colors.length === 0 ? (
         <Link href="/admin/master-data" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
           {t("products.setupNeeded")}
           <span className="underline">{t("nav.masterData")}</span>
         </Link>
       ) : null}
-      <ProductFilters q={filter.q} category={filter.category} status={filter.status} image={filter.image} categories={categories} />
+      <ProductFilters
+        q={filter.q}
+        category={filter.category}
+        color={filter.color}
+        status={filter.status}
+        image={filter.image}
+        categories={categories}
+        colors={colors}
+      />
 
       <div className="overflow-x-auto rounded-xl border bg-background">
         <table className="w-full min-w-[980px] text-sm">
@@ -104,19 +125,28 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
               </tr>
             ) : null}
             {products.map((product) => {
-              const prices = product.variants.map((variant) => Number(variant.price));
+              // With a colour chosen, the row shows that colour: its photo, its sizes, its stock and price.
+              const variants = filter.color ? product.variants.filter((variant) => variant.colorRef?.code === filter.color) : product.variants;
+              const photo = filter.color && variants[0] ? variantImageUrl(product, variants[0].colorId) : (product.imageUrl ?? product.colorImages[0]?.imageUrl ?? null);
+              const coverage = photoCoverage(product);
+              const prices = variants.map((variant) => Number(variant.price));
               const min = prices.length ? Math.min(...prices) : 0;
               const max = prices.length ? Math.max(...prices) : 0;
-              const stock = product.variants.reduce((sum, variant) => sum + variant.stockQuantity, 0);
-              const hidden = product.variants.length - SHOWN_VARIANTS;
+              const stock = variants.reduce((sum, variant) => sum + variant.stockQuantity, 0);
+              const hidden = variants.length - SHOWN_VARIANTS;
               return (
                 <tr key={product.id} className={`border-t align-top ${product.isActive ? "" : "opacity-60"}`}>
                   <td className="px-4 py-2">
                     <div className="flex items-center gap-3">
-                      <ProductThumb src={product.imageUrl} alt={product.name} className="size-12 shrink-0" />
+                      <ProductThumb src={photo} alt={product.name} className="size-12 shrink-0" />
                       <div className="min-w-0">
                         <p className="truncate font-medium">{localizedName(locale, product.name, product.nameTh)}</p>
                         <p className="truncate text-xs text-muted-foreground">{product.brand ?? "—"}</p>
+                        <p
+                          className={`text-xs ${coverage.missing === 0 ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400"}`}
+                        >
+                          {t("products.photoCoverage", { done: coverage.withPhoto, total: coverage.colors })}
+                        </p>
                       </div>
                     </div>
                   </td>
@@ -126,7 +156,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                   </td>
                   <td className="px-4 py-2">
                     <ul className="flex flex-col gap-0.5 text-xs">
-                      {product.variants.slice(0, SHOWN_VARIANTS).map((variant, index) => (
+                      {variants.slice(0, SHOWN_VARIANTS).map((variant, index) => (
                         <li key={`${variant.sku}-${index}`} className="flex flex-wrap gap-x-2">
                           <span className="font-mono">{variant.sku}</span>
                           <span className="font-mono text-muted-foreground">{variant.barcode}</span>
@@ -138,7 +168,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
                       {hidden > 0 ? <li className="text-muted-foreground">{t("products.moreVariants", { count: hidden })}</li> : null}
                     </ul>
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{product.variants.length}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{variants.length}</td>
                   <td className="px-4 py-2 text-right tabular-nums">{stock}</td>
                   <td className="px-4 py-2 text-right tabular-nums">
                     {min === max ? formatBaht(min) : `${formatBaht(min)} – ${formatBaht(max)}`}

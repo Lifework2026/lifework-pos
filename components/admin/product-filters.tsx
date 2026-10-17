@@ -6,46 +6,60 @@ import { Loader2, Search } from "lucide-react";
 import { useI18n } from "@/lib/i18n/client";
 import { localizedName } from "@/lib/payment-labels";
 
+interface Option {
+  code: string;
+  name: string;
+  nameTh: string | null;
+}
+
 interface ProductFiltersProps {
   q: string;
   category: string;
+  color: string;
   status: string;
   image: string;
-  categories: { code: string; name: string; nameTh: string | null }[];
+  categories: Option[];
+  colors: Option[];
 }
 
 interface FilterState {
   q: string;
   category: string;
+  color: string;
   status: string;
   image: string;
 }
 
 const TYPING_DELAY_MS = 250;
 const field = "h-9 rounded-md border bg-background px-3 text-sm";
+const EMPTY: FilterState = { q: "", category: "", color: "", status: "", image: "" };
+
+function same(a: FilterState, b: FilterState): boolean {
+  return a.q === b.q && a.category === b.category && a.color === b.color && a.status === b.status && a.image === b.image;
+}
 
 /**
- * Filters for the product list. The list updates as you type or choose: the page address changes and the server
- * sends the new rows, with no Apply button and no full reload. Typing waits a moment so each key is not a request.
+ * Filters for the product list: style SKU, category code, colour, active state and photo. The list updates as you type
+ * or choose: the page address changes and the server sends the new rows, with no Apply button and no full reload.
+ * Typing waits a moment so each key is not a request.
  */
-export function ProductFilters({ q, category, status, image, categories }: ProductFiltersProps) {
+export function ProductFilters({ q, category, color, status, image, categories, colors }: ProductFiltersProps) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
   const [pending, startTransition] = useTransition();
-  const [state, setState] = useState<FilterState>({ q, category, status, image });
+  const [state, setState] = useState<FilterState>({ q, category, color, status, image });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The address this component last asked for. A different address from outside (Back, a link) replaces the fields.
-  const requested = useRef<FilterState>({ q, category, status, image });
+  const requested = useRef<FilterState>({ q, category, color, status, image });
 
   useEffect(() => {
-    const incoming = { q, category, status, image };
-    const last = requested.current;
-    if (incoming.q !== last.q || incoming.category !== last.category || incoming.status !== last.status || incoming.image !== last.image) {
+    const incoming = { q, category, color, status, image };
+    if (!same(incoming, requested.current)) {
       requested.current = incoming;
       setState(incoming);
     }
-  }, [q, category, status, image]);
+  }, [q, category, color, status, image]);
 
   useEffect(
     () => () => {
@@ -59,6 +73,7 @@ export function ProductFilters({ q, category, status, image, categories }: Produ
     const params = new URLSearchParams();
     if (next.q.trim()) params.set("q", next.q.trim());
     if (next.category) params.set("category", next.category);
+    if (next.color) params.set("color", next.color);
     if (next.status) params.set("status", next.status);
     if (next.image) params.set("image", next.image);
     const query = params.toString();
@@ -73,10 +88,10 @@ export function ProductFilters({ q, category, status, image, categories }: Produ
     else navigate(next);
   }
 
-  const active = state.q !== "" || state.category !== "" || state.status !== "" || state.image !== "";
+  const active = !same(state, EMPTY);
 
   return (
-    <div className="grid gap-3 rounded-xl border bg-background p-4 md:grid-cols-[1fr_220px_150px_150px_auto] md:items-end" role="search">
+    <div className="grid gap-3 rounded-xl border bg-background p-4 md:grid-cols-[1fr_190px_190px_130px_130px_auto] md:items-end" role="search">
       <label className="flex flex-col gap-1 text-sm">
         <span className="text-muted-foreground">{t("products.filterStyle")}</span>
         <span className="relative">
@@ -96,6 +111,17 @@ export function ProductFilters({ q, category, status, image, categories }: Produ
         <select value={state.category} onChange={(event) => change({ category: event.target.value }, false)} className={field}>
           <option value="">{t("products.codeAll")}</option>
           {categories.map((row) => (
+            <option key={row.code} value={row.code}>
+              {row.code} · {localizedName(locale, row.name, row.nameTh)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted-foreground">{t("products.filterColor")}</span>
+        <select value={state.color} onChange={(event) => change({ color: event.target.value }, false)} className={field}>
+          <option value="">{t("products.colorAll")}</option>
+          {colors.map((row) => (
             <option key={row.code} value={row.code}>
               {row.code} · {localizedName(locale, row.name, row.nameTh)}
             </option>
@@ -123,9 +149,8 @@ export function ProductFilters({ q, category, status, image, categories }: Produ
           disabled={!active}
           onClick={() => {
             if (timer.current) clearTimeout(timer.current);
-            const empty = { q: "", category: "", status: "", image: "" };
-            setState(empty);
-            navigate(empty);
+            setState(EMPTY);
+            navigate(EMPTY);
           }}
           className="inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted disabled:opacity-50"
         >

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { ProductThumb } from "@/components/pos/product-thumb";
@@ -23,10 +23,10 @@ interface ProductImageFieldProps {
   disabled?: boolean;
   alt: string;
   /**
-   * The saved product. When set, a photo is uploaded and saved on the product in one request, and Remove clears it at
+   * Where to save the photo. When set, a photo is uploaded and saved there in one request, and Remove clears it at
    * once. Without it (a product that is not created yet) the photo is kept in the form and saved with the product.
    */
-  productId?: string | null;
+  saveUrl?: string | null;
 }
 
 type Status =
@@ -45,10 +45,11 @@ const ERROR_KEYS: Record<string, MessageKey> = {
 };
 
 /** Photo picker for a product. Resizes in the browser, uploads to storage, and saves the address on the product. */
-export function ProductImageField({ value, onChange, storageReady, disabled, alt, productId = null }: ProductImageFieldProps) {
+export function ProductImageField({ value, onChange, storageReady, disabled, alt, saveUrl = null }: ProductImageFieldProps) {
   const { t } = useI18n();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const busy = status.kind === "uploading" || status.kind === "removing";
 
@@ -65,7 +66,7 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
       const prepared = await prepareProductPhoto(file);
       const form = new FormData();
       form.append("file", prepared);
-      const endpoint = productId ? `/api/admin/products/${productId}/image` : "/api/admin/uploads/product-image";
+      const endpoint = saveUrl ?? "/api/admin/uploads/product-image";
       const res = await fetch(endpoint, { method: "POST", body: form });
       const body = (await res.json().catch(() => null)) as (Partial<ProductImage> & ApiErrorBody) | null;
       if (!res.ok || !body?.url || !body.path) {
@@ -74,9 +75,9 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
         return;
       }
       onChange({ url: body.url, path: body.path });
-      setStatus({ kind: "saved", message: productId ? t("img.savedToProduct") : t("img.readyToSave") });
+      setStatus({ kind: "saved", message: saveUrl ? t("img.savedToProduct") : t("img.readyToSave") });
       // The saved photo also shows in the product list, so refresh the server-rendered pages.
-      if (productId) router.refresh();
+      if (saveUrl) router.refresh();
     } catch {
       setStatus({ kind: "error", message: t("img.failed") });
     } finally {
@@ -85,14 +86,14 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
   }
 
   async function handleRemove(): Promise<void> {
-    if (!productId) {
+    if (!saveUrl) {
       onChange(null);
       setStatus({ kind: "idle" });
       return;
     }
     setStatus({ kind: "removing" });
     try {
-      const res = await fetch(`/api/admin/products/${productId}/image`, { method: "DELETE" });
+      const res = await fetch(saveUrl, { method: "DELETE" });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as ApiErrorBody | null;
         setStatus({ kind: "error", message: body?.message ?? t("img.failed") });
@@ -116,7 +117,7 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
             type="file"
             accept="image/jpeg,image/png,image/webp"
             className="sr-only"
-            id="product-photo"
+            id={inputId}
             disabled={disabled || busy || !storageReady}
             onChange={(event) => {
               const file = event.target.files?.[0];

@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { apiError, formatMoney } from "@/lib/api";
 import type { VariantSummary } from "@/lib/pos-types";
+import { variantImageUrl } from "@/lib/catalog/variant-image";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +45,11 @@ export async function GET(request: NextRequest): Promise<Response> {
         barcode: true,
         size: true,
         color: true,
+        colorId: true,
         price: true,
         stockQuantity: true,
         product: {
-          select: { id: true, name: true, nameTh: true, imageUrl: true, promoTag: true, brand: true, categoryId: true },
+          select: { id: true, name: true, nameTh: true, imageUrl: true, colorImages: { select: { colorId: true, imageUrl: true } }, promoTag: true, brand: true, categoryId: true },
         },
       },
       orderBy: [{ product: { name: "asc" } }, { color: "asc" }, { size: "asc" }],
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           name: v.product.name,
           brand: v.product.brand,
           nameTh: v.product.nameTh,
-          imageUrl: v.product.imageUrl,
+          imageUrl: variantImageUrl(v.product, v.colorId),
           promoTag: v.product.promoTag,
           categoryId: v.product.categoryId,
         },

@@ -4,7 +4,9 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { ProductColorPhotos } from "@/components/admin/product-color-photos";
 import { ProductImageField, type ProductImage } from "@/components/admin/product-image-field";
+import { colorGroups } from "@/lib/catalog/variant-image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -51,6 +53,7 @@ export interface InitialProduct {
   isActive: boolean;
   imageUrl: string | null;
   imagePath: string | null;
+  colorImages: { colorId: string; imageUrl: string; imagePath: string }[];
   variants: InitialVariant[];
 }
 
@@ -316,10 +319,20 @@ export function ProductForm({ mode, categories, colors, sizes, storageReady, ini
             storageReady={storageReady}
             disabled={submitting}
             alt={name || t("products.photo")}
-            productId={mode === "edit" ? (initial?.id ?? null) : null}
+            saveUrl={mode === "edit" && initial ? `/api/admin/products/${initial.id}/image` : null}
           />
         </CardContent>
       </Card>
+
+      {mode === "edit" && initial ? (
+        <ProductColorPhotos
+          productId={initial.id}
+          groups={colorGroups(initial.variants)}
+          images={initial.colorImages}
+          storageReady={storageReady}
+          disabled={submitting}
+        />
+      ) : null}
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-3">

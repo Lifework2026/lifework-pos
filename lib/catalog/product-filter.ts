@@ -8,6 +8,7 @@ import type { Prisma } from "@prisma/client";
 export interface ProductFilterParams {
   q?: string;
   category?: string;
+  color?: string;
   status?: string;
   image?: string;
 }
@@ -17,16 +18,20 @@ export interface ProductFilter {
   q: string;
   /** A category code such as TS, or "" for all. */
   category: string;
+  /** A colour code such as 00, or "" for all colours. */
+  color: string;
   status: "" | "active" | "inactive";
-  /** "missing" keeps only products without a photo. */
+  /** "missing" keeps products with a colour that shows no photo. It is decided from the photos, in the page. */
   image: "" | "missing";
 }
 
 export function parseProductFilter(params: ProductFilterParams): ProductFilter {
   const category = (params.category ?? "").trim().toUpperCase();
+  const color = (params.color ?? "").trim().toUpperCase();
   return {
     q: (params.q ?? "").trim().slice(0, 100),
     category: /^[A-Z0-9-]{1,20}$/.test(category) ? category : "",
+    color: /^[A-Z0-9-]{1,20}$/.test(color) ? color : "",
     status: params.status === "active" || params.status === "inactive" ? params.status : "",
     image: params.image === "missing" ? "missing" : "",
   };
@@ -40,7 +45,7 @@ export function productWhere(filter: ProductFilter): Prisma.ProductWhereInput {
   return {
     ...(filter.category ? { category: { code: filter.category } } : {}),
     ...(filter.status ? { isActive: filter.status === "active" } : {}),
-    ...(filter.image === "missing" ? { imageUrl: null } : {}),
+    ...(filter.color ? { variants: { some: { colorRef: { code: filter.color } } } } : {}),
     ...(filter.q
       ? {
           OR: [

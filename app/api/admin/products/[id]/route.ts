@@ -267,11 +267,15 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   if ("response" in auth) return auth.response;
 
   let imagePath: string | null = null;
+  let colorImagePaths: string[] = [];
   try {
     await prisma.$transaction(async (tx) => {
       const product = await tx.product.findUnique({
         where: { id: params.id },
-        include: { variants: { select: { id: true, sku: true, stockQuantity: true } } },
+        include: {
+          variants: { select: { id: true, sku: true, stockQuantity: true } },
+          colorImages: { select: { imagePath: true } },
+        },
       });
       if (!product) throw new ProductError(404, "PRODUCT_NOT_FOUND", "Product not found.");
 
@@ -286,6 +290,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
       }
 
       imagePath = product.imagePath;
+      colorImagePaths = product.colorImages.map((image) => image.imagePath);
       await tx.inventoryMovement.deleteMany({ where: { variantId: { in: variantIds } } });
       await tx.productVariant.deleteMany({ where: { productId: product.id } });
       await tx.product.delete({ where: { id: product.id } });
@@ -302,6 +307,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
 
     const config = getStorageConfig();
     if (config && imagePath) await deleteProductImage(config, imagePath);
+    if (config) for (const path of colorImagePaths) await deleteProductImage(config, path);
     return Response.json({ ok: true });
   } catch (err) {
     if (err instanceof ProductError) return apiError(err.status, err.code, err.message);

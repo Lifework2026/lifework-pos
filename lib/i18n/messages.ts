@@ -189,6 +189,13 @@ const en = {
   "products.photoAny": "Any",
   "products.photoMissing": "No photo yet",
   "products.updating": "Updating…",
+  "products.filterColor": "Colour",
+  "products.colorAll": "All colours",
+  "products.colorPhotosTitle": "Photos by colour",
+  "products.colorPhotosHint": "One photo per colour. Every size in that colour shares it. A colour without its own photo shows the product photo above.",
+  "products.colorPhotoSizes": "Sizes: {sizes}",
+  "products.colorPhotosSaveFirst": "Save the product first to add photos for new colours.",
+  "products.photoCoverage": "Photos {done}/{total} colours",
 
   // Receipt preview
   "preview.title": "Receipt preview",
@@ -1118,6 +1125,13 @@ const th: Record<MessageKey, string> = {
   "products.photoAny": "ทั้งหมด",
   "products.photoMissing": "ยังไม่มีรูป",
   "products.updating": "กำลังอัปเดต…",
+  "products.filterColor": "สี",
+  "products.colorAll": "ทุกสี",
+  "products.colorPhotosTitle": "รูปตามสี",
+  "products.colorPhotosHint": "หนึ่งรูปต่อหนึ่งสี ทุกไซซ์ของสีนั้นใช้รูปเดียวกัน สีที่ยังไม่มีรูปของตัวเองจะแสดงรูปหลักด้านบน",
+  "products.colorPhotoSizes": "ไซซ์: {sizes}",
+  "products.colorPhotosSaveFirst": "บันทึกสินค้าก่อน จึงจะเพิ่มรูปให้สีใหม่ได้",
+  "products.photoCoverage": "รูป {done}/{total} สี",
 
   "preview.title": "ตัวอย่างใบเสร็จ",
   "preview.subtitle": "{receipt} · ตรวจสอบก่อนพิมพ์",

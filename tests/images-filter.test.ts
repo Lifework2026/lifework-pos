@@ -116,13 +116,20 @@ const WITHOUT: ProductImageRecord = { id: "p1", imageUrl: null, imagePath: null 
   });
 
   await test("filter: values from the address are cleaned", () => {
-    assert.deepEqual(parseProductFilter({ q: "  LW265TS ", category: "ts", status: "active", image: "missing" }), {
+    assert.deepEqual(parseProductFilter({ q: "  LW265TS ", category: "ts", color: "03", status: "active", image: "missing" }), {
       q: "LW265TS",
       category: "TS",
+      color: "03",
       status: "active",
       image: "missing",
     });
-    assert.deepEqual(parseProductFilter({ category: "TS; DROP", status: "weird", image: "x" }), { q: "", category: "", status: "", image: "" });
+    assert.deepEqual(parseProductFilter({ category: "TS; DROP", color: "0 0", status: "weird", image: "x" }), {
+      q: "",
+      category: "",
+      color: "",
+      status: "",
+      image: "",
+    });
     assert.equal(parseProductFilter({ q: "a".repeat(300) }).q.length, 100);
   });
 
@@ -136,12 +143,17 @@ const WITHOUT: ProductImageRecord = { id: "p1", imageUrl: null, imagePath: null 
     assert.deepEqual(where.OR?.[3], { variants: { some: { sku: { contains: "LW265TS", mode: "insensitive" } } } });
   });
 
-  await test("filter: category code, active state and missing photo combine", () => {
-    const where = productWhere(parseProductFilter({ category: "TS", status: "inactive", image: "missing", q: "LW" }));
+  await test("filter: category code, colour and active state combine with the style search", () => {
+    const where = productWhere(parseProductFilter({ category: "TS", color: "03", status: "inactive", q: "LW" }));
     assert.deepEqual(where.category, { code: "TS" });
+    assert.deepEqual(where.variants, { some: { colorRef: { code: "03" } } });
     assert.equal(where.isActive, false);
-    assert.equal(where.imageUrl, null);
     assert.ok(Array.isArray(where.OR));
+  });
+
+  await test("filter: the missing-photo filter is not part of the where clause, because it depends on the colour photos", () => {
+    const where = productWhere(parseProductFilter({ image: "missing" }));
+    assert.equal("imageUrl" in where, false);
   });
 
   await test("structure: the photo routes are manager-only, and the upload route shares the photo check", () => {
@@ -154,10 +166,10 @@ const WITHOUT: ProductImageRecord = { id: "p1", imageUrl: null, imagePath: null 
 
   await test("structure: the photo field saves to the product at once and shows loading, saved and error states", () => {
     const field = read("components/admin/product-image-field.tsx");
-    assert.ok(field.includes("/api/admin/products/${productId}/image"));
+    assert.ok(field.includes("saveUrl") && field.includes("fetch(saveUrl"));
+    assert.ok(read("components/admin/product-form.tsx").includes("/api/admin/products/${initial.id}/image"));
     for (const kind of ['kind: "uploading"', 'kind: "saved"', 'kind: "error"', 'kind: "removing"']) assert.ok(field.includes(kind), kind);
     assert.ok(field.includes("router.refresh()"));
-    assert.ok(read("components/admin/product-form.tsx").includes('productId={mode === "edit"'));
   });
 
   await test("structure: the product list filters live, with no Apply button", () => {

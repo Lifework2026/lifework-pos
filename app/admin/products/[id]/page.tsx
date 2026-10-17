@@ -9,7 +9,10 @@ export default async function EditProductPage({ params }: { params: { id: string
   const [product, categories, colors, sizes] = await Promise.all([
     prisma.product.findUnique({
       where: { id: params.id },
-      include: { variants: { orderBy: [{ color: "asc" }, { size: "asc" }] } },
+      include: {
+        variants: { orderBy: [{ color: "asc" }, { size: "asc" }] },
+        colorImages: { select: { colorId: true, imageUrl: true, imagePath: true } },
+      },
     }),
     prisma.category.findMany({ select: { id: true, name: true, nameTh: true }, orderBy: { name: "asc" } }),
     prisma.color.findMany({ select: { id: true, code: true, name: true, nameTh: true }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
@@ -28,6 +31,7 @@ export default async function EditProductPage({ params }: { params: { id: string
     isActive: product.isActive,
     imageUrl: product.imageUrl,
     imagePath: product.imagePath,
+    colorImages: product.colorImages,
     variants: product.variants.map((variant) => ({
       id: variant.id,
       size: variant.size,

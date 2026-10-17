@@ -2,14 +2,9 @@ import { apiError } from "@/lib/api";
 import { requireManager } from "@/lib/api-helpers";
 import { readImageUpload } from "@/lib/image-upload";
 import { prisma } from "@/lib/prisma";
-import {
-  ProductImageNotFound,
-  removeProductImage,
-  replaceProductImage,
-  type ProductImageDb,
-  type ProductImageStore,
-} from "@/lib/product-image-binding";
-import { deleteProductImage, getStorageConfig, StorageError, uploadProductImage, type StorageConfig } from "@/lib/storage";
+import { removeProductImage, replaceProductImage, type ProductImageDb } from "@/lib/product-image-binding";
+import { imageFailure, storeFor } from "@/lib/product-image-store";
+import { getStorageConfig } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -20,34 +15,12 @@ const db: ProductImageDb = {
   },
 };
 
-function storeFor(config: StorageConfig | null): ProductImageStore {
-  return {
-    upload: async (bytes, image) => {
-      if (!config) throw new StorageError("NOT_CONFIGURED", "Image storage is not set up.");
-      return uploadProductImage(config, bytes, image);
-    },
-    remove: async (path) => {
-      if (config) await deleteProductImage(config, path);
-    },
-  };
-}
-
-function failure(err: unknown, label: string): Response {
-  if (err instanceof ProductImageNotFound) return apiError(404, "NOT_FOUND", "Product not found.");
-  if (err instanceof StorageError) {
-    console.error(label, err.code, err.message);
-    return apiError(502, err.code, "The photo could not be saved to storage. Check the storage settings and try again.");
-  }
-  console.error(label, err);
-  return apiError(500, "INTERNAL_ERROR", "The photo could not be saved.");
-}
-
 /**
  * POST /api/admin/products/[id]/image (multipart form, field "file")
  *
- * Uploads the photo to Supabase Storage and saves its public address on the product in the same request. If the
- * database save fails, the uploaded file is deleted again. The old photo is deleted after the new one is saved.
- * Managers only.
+ * Uploads the product photo to Supabase Storage and saves its public address on the product in the same request. This
+ * is the photo every colour shows until the colour has its own (see .../colors/[colorId]/image). If the database save
+ * fails, the uploaded file is deleted again. The old photo is deleted after the new one is saved. Managers only.
  */
 export async function POST(request: Request, { params }: { params: { id: string } }): Promise<Response> {
   const auth = await requireManager();
@@ -72,11 +45,11 @@ export async function POST(request: Request, { params }: { params: { id: string 
     });
     return Response.json({ url: saved.url, path: saved.path }, { status: 201 });
   } catch (err) {
-    return failure(err, "[POST /api/admin/products/[id]/image]");
+    return imageFailure(err, "[POST /api/admin/products/[id]/image]");
   }
 }
 
-/** DELETE /api/admin/products/[id]/image: clears the photo from the product and deletes the file. Managers only. */
+/** DELETE /api/admin/products/[id]/image: clears the product photo and deletes the file. Managers only. */
 export async function DELETE(_request: Request, { params }: { params: { id: string } }): Promise<Response> {
   const auth = await requireManager();
   if ("response" in auth) return auth.response;
@@ -88,6 +61,6 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
     });
     return Response.json({ ok: true });
   } catch (err) {
-    return failure(err, "[DELETE /api/admin/products/[id]/image]");
+    return imageFailure(err, "[DELETE /api/admin/products/[id]/image]");
   }
 }
