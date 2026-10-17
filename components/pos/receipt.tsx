@@ -105,20 +105,33 @@ export function Receipt({ order }: ReceiptProps) {
 
       <div className="receipt-divider" />
 
+      {discounts.length > 0 ? (
+        <>
+          <div className="receipt-row">
+            <span>{t("receipt.itemsTotal")}</span>
+            <span>{money(order.subtotal)}</span>
+          </div>
+          {discounts.map((row) => (
+            <div key={row.label} className="receipt-row">
+              <span>{row.label}</span>
+              <span>-{money(row.value)}</span>
+            </div>
+          ))}
+        </>
+      ) : null}
       <div className="receipt-row">
-        <span>{t("receipt.subtotal")}</span>
-        <span>{money(order.subtotal)}</span>
+        <span>{t("receipt.subtotalExVat")}</span>
+        <span>{money(order.netAmount)}</span>
       </div>
-      {discounts.map((row) => (
-        <div key={row.label} className="receipt-row">
-          <span>{row.label}</span>
-          <span>-{money(row.value)}</span>
-        </div>
-      ))}
+      <div className="receipt-row">
+        <span>{t("receipt.vat", { percent: order.vatPercent })}</span>
+        <span>{money(order.vatAmount)}</span>
+      </div>
       <div className="receipt-row receipt-total">
-        <span>{t("receipt.total")}</span>
+        <span>{t("receipt.grandTotal")}</span>
         <span>{money(order.totalAmount)}</span>
       </div>
+      <p className="receipt-center receipt-sub">{t("receipt.vatIncluded")}</p>
 
       <div className="receipt-divider" />
 

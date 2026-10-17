@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { thaiToEnglish } from "@/lib/keyboard/thai-keymap";
 
 export interface UseBarcodeScannerOptions {
   /** Called with the scanned barcode once a complete scan ends with Enter. */
@@ -81,7 +82,8 @@ export function useBarcodeScanner({
         if (isValid) {
           // Stop the Enter from also activating a focused button.
           event.preventDefault();
-          onScanRef.current(scanned);
+          // A scanner typing while the computer is set to Thai is mapped back to the keys it pressed.
+          onScanRef.current(thaiToEnglish(scanned));
         }
         return;
       }

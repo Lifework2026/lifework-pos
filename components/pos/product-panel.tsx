@@ -8,12 +8,16 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ProductTile } from "@/components/pos/product-tile";
 import { ProductGridSkeleton } from "@/components/pos/skeletons";
+import { useScannerInput } from "@/hooks/useScannerInput";
+import type { ScanDecision } from "@/lib/scanner-input";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { localizedName } from "@/lib/payment-labels";
 import type { CategorySummary, VariantSummary } from "@/lib/pos-types";
 
 const SEARCH_DEBOUNCE_MS = 250;
+/** The POS barcode field. Scanning is handled here and nowhere else on the page. */
+const BARCODE_INPUT_ID = "pos-barcode-input";
 /** Recent searches kept in memory. Repeating a search or category shows the last result at once. */
 const RESULT_CACHE_SIZE = 40;
 
@@ -21,9 +25,11 @@ interface ProductPanelProps {
   onSelectVariant: (variant: VariantSummary) => void;
   scannerActive: boolean;
   lastScannedBarcode: string | null;
+  /** Looks the scanned code up and adds it to the cart. Resolves true when it was added. */
+  onScan: (decision: ScanDecision) => Promise<boolean>;
 }
 
-export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcode }: ProductPanelProps) {
+export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcode, onScan }: ProductPanelProps) {
   const { t, locale } = useI18n();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -32,6 +38,13 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
   const [variants, setVariants] = useState<VariantSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
+  const { handleChange, handleKeyDown } = useScannerInput({
+    value: query,
+    setValue: setQuery,
+    onScan,
+    enabled: scannerActive,
+    inputId: BARCODE_INPUT_ID,
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -108,15 +121,13 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          id={BARCODE_INPUT_ID}
+          onChange={handleChange}
           placeholder={t("pos.searchPlaceholder")}
           className="h-11 pl-9 text-base"
           aria-label={t("pos.searchLabel")}
           autoComplete="off"
-          onKeyDown={(event) => {
-            // Leaving the field hands keyboard input back to the barcode scanner.
-            if (event.key === "Escape") event.currentTarget.blur();
-          }}
+          onKeyDown={handleKeyDown}
         />
       </div>
 

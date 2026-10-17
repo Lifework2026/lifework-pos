@@ -172,6 +172,11 @@ const en = {
   "receipt.pointsEarned": "Points earned",
   "receipt.pointsRedeemed": "Points redeemed",
   "receipt.thanks": "Thank you for shopping at {store}",
+  "receipt.itemsTotal": "Items total",
+  "receipt.subtotalExVat": "Sub total",
+  "receipt.vat": "VAT ({percent}%)",
+  "receipt.grandTotal": "GRAND TOTAL",
+  "receipt.vatIncluded": "*Vat Included*",
 
   // Receipt preview
   "preview.title": "Receipt preview",
@@ -1084,6 +1089,11 @@ const th: Record<MessageKey, string> = {
   "receipt.pointsEarned": "แต้มที่ได้รับ",
   "receipt.pointsRedeemed": "แต้มที่ใช้แลก",
   "receipt.thanks": "ขอบคุณที่ใช้บริการ {store}",
+  "receipt.itemsTotal": "รวมรายการ",
+  "receipt.subtotalExVat": "ยอดก่อนภาษี",
+  "receipt.vat": "ภาษีมูลค่าเพิ่ม ({percent}%)",
+  "receipt.grandTotal": "รวมทั้งสิ้น",
+  "receipt.vatIncluded": "*รวมภาษีมูลค่าเพิ่มแล้ว*",
 
   "preview.title": "ตัวอย่างใบเสร็จ",
   "preview.subtitle": "{receipt} · ตรวจสอบก่อนพิมพ์",

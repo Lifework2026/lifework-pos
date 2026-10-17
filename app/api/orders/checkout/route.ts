@@ -5,6 +5,7 @@ import { apiError } from "@/lib/api";
 import { getCurrentSession } from "@/lib/auth/server";
 import { LOYALTY } from "@/lib/store-config";
 import { satangToDecimal, type PricingResult } from "@/lib/pricing";
+import { splitInclusiveVat } from "@/lib/tax-rules";
 import { priceBasket, type BasketInput, type PricedBasket } from "@/lib/orders/context";
 import { OrderError } from "@/lib/orders/errors";
 import { normalizePaymentLines, type NormalizedPaymentLine } from "@/lib/orders/payments";
@@ -108,6 +109,8 @@ async function placeOrder(tx: Prisma.TransactionClient, input: CheckoutInput, ca
 
   const receiptNo = await nextReceiptNumber(tx, new Date());
   const resultByKey = new Map(pricing.lines.map((line) => [line.key, line]));
+  // Prices include VAT. The split is taken from what the customer actually pays, after every discount.
+  const { netSatang, vatSatang } = splitInclusiveVat(pricing.total);
 
   const order = await tx.order.create({
     data: {
@@ -124,6 +127,8 @@ async function placeOrder(tx: Prisma.TransactionClient, input: CheckoutInput, ca
       manualDiscount: satangToDecimal(pricing.manualDiscount),
       pointsDiscount: satangToDecimal(pricing.pointsDiscount),
       totalAmount: satangToDecimal(pricing.total),
+      netAmount: satangToDecimal(netSatang),
+      vatAmount: satangToDecimal(vatSatang),
       pointsRedeemed: pricing.pointsRedeemed,
       pointsEarned: pricing.pointsEarned,
       items: {

@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { formatMoney } from "@/lib/api";
 import { STORE } from "@/lib/store-config";
 import { getSellerInfo } from "@/lib/tax-seller";
-import { VAT_PERCENT, vatFromInclusiveSatang } from "@/lib/tax-rules";
+import { VAT_PERCENT } from "@/lib/tax-rules";
 import type { OrderDetails } from "@/lib/pos-types";
 
 /** Query shape shared by checkout, reprints, the sales log and returns. */
@@ -17,6 +17,8 @@ export const orderSelect = {
   manualDiscount: true,
   pointsDiscount: true,
   totalAmount: true,
+  netAmount: true,
+  vatAmount: true,
   refundedAmount: true,
   pointsRedeemed: true,
   pointsEarned: true,
@@ -77,8 +79,6 @@ export type OrderRecord = Prisma.OrderGetPayload<{ select: typeof orderSelect }>
 function taxInvoiceDetails(order: OrderRecord): OrderDetails["taxInvoice"] {
   if (!order.taxInvoiceNo || !order.taxInvoiceAt) return null;
   const seller = getSellerInfo();
-  const totalSatang = Math.round(Number(order.totalAmount) * 100);
-  const vatSatang = vatFromInclusiveSatang(totalSatang);
   return {
     number: order.taxInvoiceNo,
     issuedAt: order.taxInvoiceAt.toISOString(),
@@ -90,8 +90,8 @@ function taxInvoiceDetails(order: OrderRecord): OrderDetails["taxInvoice"] {
       taxId: order.taxCustomerTaxId ?? "",
     },
     totalInclVat: formatMoney(order.totalAmount),
-    valueExVat: (Number(totalSatang - vatSatang) / 100).toFixed(2),
-    vat: (vatSatang / 100).toFixed(2),
+    valueExVat: formatMoney(order.netAmount),
+    vat: formatMoney(order.vatAmount),
     vatPercent: VAT_PERCENT,
   };
 }
@@ -120,6 +120,9 @@ export function serializeOrder(order: OrderRecord): OrderDetails {
     manualDiscount: formatMoney(order.manualDiscount),
     pointsDiscount: formatMoney(order.pointsDiscount),
     totalAmount: formatMoney(order.totalAmount),
+    netAmount: formatMoney(order.netAmount),
+    vatAmount: formatMoney(order.vatAmount),
+    vatPercent: VAT_PERCENT,
     refundedAmount: formatMoney(order.refundedAmount),
     voidReason: order.voidReason,
     voidedAt: order.voidedAt?.toISOString() ?? null,

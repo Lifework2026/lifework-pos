@@ -291,6 +291,11 @@ model Order {
   pointsDiscount    Decimal @default(0) @db.Decimal(12, 2)
   /// Amount payable after all discounts.
   totalAmount       Decimal @db.Decimal(12, 2)
+  /// Prices include 7% VAT. totalAmount is the grand total; netAmount is the part before VAT and vatAmount the VAT
+  /// inside it. Stored at the sale so receipts and reports read the same figures. A database check keeps
+  /// netAmount + vatAmount = totalAmount.
+  netAmount         Decimal @db.Decimal(12, 2)
+  vatAmount         Decimal @db.Decimal(12, 2)
 
   pointsRedeemed Int     @default(0)
   pointsEarned   Int     @default(0)

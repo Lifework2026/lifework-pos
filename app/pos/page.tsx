@@ -15,9 +15,9 @@ import { LocaleToggle } from "@/components/locale-toggle";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
-import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import type { HeldBillSummary, ResumedBill } from "@/lib/held-bills";
 import { requestJson } from "@/lib/http";
+import type { ScanDecision } from "@/lib/scanner-input";
 import { useI18n } from "@/lib/i18n/client";
 import type { ApiErrorBody, OrderDetails, VariantSummary } from "@/lib/pos-types";
 import type { SessionUser } from "@/lib/auth/session";
@@ -97,34 +97,34 @@ export default function PosPage() {
   );
 
   const handleScan = useCallback(
-    async (barcode: string) => {
+    async ({ barcode, fast }: ScanDecision): Promise<boolean> => {
       setLastScannedBarcode(barcode);
       try {
         const res = await fetch(`/api/products/search?barcode=${encodeURIComponent(barcode)}`, { cache: "no-store" });
 
         if (res.status === 404) {
-          toast.add({ title: t("pos.notFound"), description: t("pos.noActiveProduct", { code: barcode }), type: "error" });
-          return;
+          // A scan that finds nothing is reported. A typed word that is not a barcode just stays in the search box.
+          if (fast) toast.add({ title: t("pos.notFound"), description: t("pos.noActiveProduct", { code: barcode }), type: "error" });
+          return false;
         }
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as ApiErrorBody | null;
           toast.add({ title: t("pos.scanFailed"), description: body?.message ?? t("pos.scanNetwork"), type: "error" });
-          return;
+          return false;
         }
 
         const body: { variant: VariantSummary } = await res.json();
-        addVariant(body.variant);
+        return addVariant(body.variant);
       } catch {
         toast.add({ title: t("pos.scanFailed"), description: t("pos.scanNetwork"), type: "error" });
+        return false;
       }
     },
     [addVariant, t],
   );
 
-  useBarcodeScanner({
-    onScan: handleScan,
-    enabled: !checkoutOpen && !heldOpen && shiftOpen,
-  });
+  // The barcode field takes input only while no dialog is open and a shift is running.
+  const scannerEnabled = !checkoutOpen && !heldOpen && shiftOpen;
 
   async function holdCurrentBill(): Promise<void> {
     const { items, discount, getTotal } = useCartStore.getState();
@@ -230,8 +230,9 @@ export default function PosPage() {
           <div className="min-h-0 rounded-xl border bg-background p-4">
             <ProductPanel
               onSelectVariant={addVariant}
-              scannerActive={!checkoutOpen && !heldOpen && shiftOpen}
+              scannerActive={scannerEnabled}
               lastScannedBarcode={lastScannedBarcode}
+              onScan={handleScan}
             />
           </div>
 

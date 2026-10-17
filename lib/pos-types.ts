@@ -91,6 +91,11 @@ export interface OrderDetails {
   manualDiscount: string;
   pointsDiscount: string;
   totalAmount: string;
+  /** Part of totalAmount before VAT. */
+  netAmount: string;
+  /** The VAT inside totalAmount. */
+  vatAmount: string;
+  vatPercent: number;
   refundedAmount: string;
   voidReason: string | null;
   voidedAt: string | null;

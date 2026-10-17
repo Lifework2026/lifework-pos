@@ -13,6 +13,16 @@ export function vatFromInclusiveSatang(amountSatang: number): number {
 }
 
 /**
+ * Splits a VAT-inclusive total into the amount before VAT and the VAT inside it, in satang.
+ *   vat = total x 7 / 107, rounded to the satang. net = total - vat.
+ * The net is the total minus the VAT, not rounded on its own, so net + vat equals the total exactly.
+ */
+export function splitInclusiveVat(totalSatang: number): { netSatang: number; vatSatang: number } {
+  const vatSatang = vatFromInclusiveSatang(totalSatang);
+  return { netSatang: totalSatang - vatSatang, vatSatang };
+}
+
+/**
  * Checks a 13-digit Thai tax ID, including its check digit. Limit: a single wrong digit in the third position is not
  * detectable, since that digit's weight (11) is 0 mod 11. Staff should compare the ID with the buyer's card.
  * Weights are 13 down to 2 on the first 12 digits;
