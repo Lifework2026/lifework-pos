@@ -55,7 +55,11 @@ async function readWorkbook(filePath: string): Promise<Workbook> {
   if (!ws) throw new Error("The workbook has no sheets.");
 
   const columns = new Map<string, number>();
-  ws.getRow(1).eachCell((cell, col) => columns.set(header(cell.value), col));
+  // The first column with a name wins: a sheet may repeat a header further to the right.
+  ws.getRow(1).eachCell((cell, col) => {
+    const name = header(cell.value);
+    if (!columns.has(name)) columns.set(name, col);
+  });
   const need = (name: string): number => {
     const col = columns.get(name);
     if (!col) throw new Error(`The first row has no "${name}" column. Found: ${Array.from(columns.keys()).join(", ")}`);
