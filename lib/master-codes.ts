@@ -1,3 +1,4 @@
+import { OFFICIAL_CATEGORY_CODES } from "@/lib/catalog-matrix";
 /**
  * Catalog codes for master data (categories and colours). Client-safe.
  * A code is what spreadsheets use to name a category or colour, so it must be exact: upper-case letters,
@@ -9,10 +10,10 @@ export const CODE_RULE_MESSAGE = "Code must be 2 to 20 letters or digits, for ex
 
 /** Category codes are the official two-letter dictionary keys, for example TS or BG. */
 export const CATEGORY_CODE_PATTERN = /^[A-Z]{2}$/;
-export const CATEGORY_CODE_MESSAGE = "Category code must be exactly 2 capital letters from the official dictionary, for example TS (Short T-Shirts) or BG (BAG).";
+export const CATEGORY_CODE_MESSAGE = "Category code must be one of the 39 official dictionary codes, for example TS (Short T-Shirts) or BG (BAG).";
 
 export function isValidCategoryCode(value: string): boolean {
-  return CATEGORY_CODE_PATTERN.test(value);
+  return OFFICIAL_CATEGORY_CODES.has(value);
 }
 
 export function normalizeCode(value: string): string {
