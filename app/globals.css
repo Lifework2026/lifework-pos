@@ -8,6 +8,7 @@
   --font-sans: var(--font-geist-sans), var(--font-thai), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
   --color-background: var(--background);
+  --color-canvas: var(--canvas);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -47,24 +48,27 @@
 
 @layer base {
   :root {
+    /* Light surfaces alternate: a soft grey canvas behind white panels. Text is charcoal, not pure black. */
+    --canvas: oklch(0.965 0.003 255);
     --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    --foreground: oklch(0.225 0.012 260);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --card-foreground: oklch(0.225 0.012 260);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.225 0.012 260);
+    --primary: oklch(0.225 0.012 260);
     --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
+    --secondary: oklch(0.955 0.004 255);
+    --secondary-foreground: oklch(0.225 0.012 260);
+    --muted: oklch(0.955 0.004 255);
+    --muted-foreground: oklch(0.5 0.012 260);
+    --accent: oklch(0.955 0.004 255);
+    --accent-foreground: oklch(0.225 0.012 260);
+    --destructive: oklch(0.55 0.22 27);
+    /* A little darker than before so thin borders stay crisp on both the canvas and white panels. */
+    --border: oklch(0.88 0.005 255);
+    --input: oklch(0.86 0.006 255);
+    --ring: oklch(0.55 0.02 260);
     --chart-1: oklch(0.87 0 0);
     --chart-2: oklch(0.556 0 0);
     --chart-3: oklch(0.439 0 0);
@@ -81,6 +85,7 @@
     --sidebar-ring: oklch(0.708 0 0);
   }
   .dark {
+    --canvas: oklch(0.12 0 0);
     --background: oklch(0.145 0 0);
     --foreground: oklch(0.985 0 0);
     --card: oklch(0.205 0 0);
@@ -117,10 +122,38 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-canvas text-foreground;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: -0.003em;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Thai script has tall marks above and below the line, so it needs more room than Latin text. */
+  html[lang="th"] body {
+    line-height: 1.65;
+    letter-spacing: 0;
+  }
+  h1,
+  h2,
+  h3 {
+    font-weight: 600;
+    line-height: 1.25;
   }
   html {
     @apply font-sans;
+  }
+  /* Digits line up in columns. Used for prices, totals, quantities and stock counts. */
+  .num {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  /* A row that scrolls sideways without showing a scrollbar (the category strip). */
+  .scrollbar-none {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
   }
 }
 /* ------------------------------------------------------------------------------------------------

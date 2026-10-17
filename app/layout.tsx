@@ -41,7 +41,7 @@ export default function RootLayout({
   const locale = getServerLocale();
   return (
     <html lang={locale} className={cn("font-sans", geistSans.variable, geistMono.variable, notoThai.variable)}>
-      <body className="bg-background text-foreground antialiased">
+      <body className="bg-canvas text-foreground antialiased">
         <LocaleProvider initialLocale={locale}>
           <NetworkProvider>{children}</NetworkProvider>
           <Toaster />

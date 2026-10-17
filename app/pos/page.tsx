@@ -190,18 +190,18 @@ export default function PosPage() {
 
   return (
     <SessionProvider value={user}>
-      <main className="flex min-h-dvh flex-col gap-4 bg-muted/30 p-4 lg:h-dvh">
-        <header className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-xl font-bold tracking-tight">Lifework POS</h1>
+      <main className="flex min-h-dvh flex-col gap-3 bg-canvas p-3 lg:h-dvh">
+        <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <h1 className="text-base font-semibold tracking-tight">Lifework POS</h1>
             {lastSale ? (
-              <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                <CheckCircle2 className="size-3.5 text-emerald-600" />
+              <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+                <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />
                 {t("pos.lastSale", { receipt: lastSale.receiptNo })}
               </p>
             ) : null}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             <ShiftManager
               onOpenChange={setShiftOpen}
               cartHasItems={cartHasItems}
@@ -211,7 +211,7 @@ export default function PosPage() {
             />
             <LocaleToggle />
             {user ? (
-              <Badge variant="outline" className="gap-1 py-1">
+              <Badge variant="outline" className="gap-1 bg-card py-1">
                 <UserRound className="size-3.5" />
                 {user.fullName}
               </Badge>
@@ -226,8 +226,8 @@ export default function PosPage() {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_400px]">
-          <div className="min-h-0 rounded-xl border bg-background p-4">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px]">
+          <div className="min-h-0 rounded-xl border bg-card p-3">
             <ProductPanel
               onSelectVariant={addVariant}
               scannerActive={scannerEnabled}

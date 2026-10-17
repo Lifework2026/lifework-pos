@@ -15,6 +15,7 @@ interface ProductTileProps {
 /**
  * One product in the sales grid. Memoized: typing in the search box or changing the category re-renders
  * the grid, but only tiles whose variant actually changed are rebuilt. The card itself is ProductCard.
+ * A sold-out tile cannot be pressed; the card mutes itself instead of the whole button fading.
  */
 export const ProductTile = memo(function ProductTile({ variant, onSelect }: ProductTileProps) {
   const { t, locale } = useI18n();
@@ -26,7 +27,7 @@ export const ProductTile = memo(function ProductTile({ variant, onSelect }: Prod
       type="button"
       disabled={outOfStock}
       onClick={() => onSelect(variant)}
-      className="text-left disabled:cursor-not-allowed disabled:opacity-50"
+      className="group/tile block w-full rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.985] disabled:cursor-not-allowed disabled:active:scale-100"
     >
       <ProductCard
         name={name}

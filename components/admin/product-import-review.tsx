@@ -160,7 +160,7 @@ export function ProductImportReview({ preview }: ProductImportReviewProps) {
 
         <section className={panel} aria-label={t("import.liveTitle", { line: selected.line })}>
           <h3 className={heading}>{t("import.liveTitle", { line: selected.line })}</h3>
-          <div className="w-full max-w-xs self-center">
+          <div className="w-full max-w-[11rem] self-center">
             <ProductCard
               name={localizedName(locale, selected.name, selected.nameTh)}
               imageUrl={null}

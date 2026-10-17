@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Package, Radio, Search } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ChevronRight, Package, Radio, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ProductTile } from "@/components/pos/product-tile";
@@ -68,6 +66,7 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
 
   // Recent results, so a repeated search or category shows at once while a fresh copy loads in the background.
   const cacheRef = useRef(new Map<string, VariantSummary[]>());
+  const stripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -103,48 +102,61 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
   }, [debouncedQuery, categoryId]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span aria-hidden className={`inline-block size-2.5 rounded-full ${scannerActive ? "bg-emerald-500" : "bg-muted-foreground"}`} />
-          <Badge variant={scannerActive ? "secondary" : "outline"} className="gap-1">
-            <Radio className="size-3" />
+    <section className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            id={BARCODE_INPUT_ID}
+            onChange={handleChange}
+            placeholder={t("pos.searchPlaceholder")}
+            className="h-10 bg-card pl-9 text-[15px]"
+            aria-label={t("pos.searchLabel")}
+            autoComplete="off"
+            onKeyDown={handleKeyDown}
+          />
+        </div>
+        <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground" role="status">
+          <span aria-hidden className={`inline-block size-2 rounded-full ${scannerActive ? "bg-emerald-500" : "bg-muted-foreground/60"}`} />
+          <Radio className="size-3.5" aria-hidden />
+          <span className={scannerActive ? "font-medium text-foreground/80" : ""}>
             {scannerActive ? t("pos.scannerReady") : t("pos.scannerPaused")}
-          </Badge>
-          {lastScannedBarcode ? (
-            <span className="font-mono text-xs text-muted-foreground">{t("pos.lastScan", { code: lastScannedBarcode })}</span>
-          ) : null}
+          </span>
+          {lastScannedBarcode ? <span className="hidden font-mono text-[11px] xl:inline">{t("pos.lastScan", { code: lastScannedBarcode })}</span> : null}
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          id={BARCODE_INPUT_ID}
-          onChange={handleChange}
-          placeholder={t("pos.searchPlaceholder")}
-          className="h-11 pl-9 text-base"
-          aria-label={t("pos.searchLabel")}
-          autoComplete="off"
-          onKeyDown={handleKeyDown}
-        />
-      </div>
-
-      <div className="flex flex-wrap gap-2" role="group" aria-label={t("pos.products")}>
-        <Button size="sm" variant={categoryId === null ? "default" : "outline"} onClick={() => setCategoryId(null)}>
-          {t("pos.all")}
-        </Button>
-        {categories.map((category) => (
-          <Button
-            key={category.id}
-            size="sm"
-            variant={categoryId === category.id ? "default" : "outline"}
-            onClick={() => setCategoryId(category.id)}
-          >
-            {localizedName(locale, category.name, category.nameTh)}
-          </Button>
-        ))}
+      <div className="relative -mx-1">
+        <div
+          ref={stripRef}
+          role="group"
+          aria-label={t("pos.products")}
+          onWheel={(event) => {
+            // A mouse wheel moves the strip sideways, since it has nothing to scroll up or down.
+            if (Math.abs(event.deltaY) > Math.abs(event.deltaX) && stripRef.current) stripRef.current.scrollLeft += event.deltaY;
+          }}
+          className="scrollbar-none flex snap-x gap-1.5 overflow-x-auto scroll-smooth px-1 py-0.5 pr-10"
+        >
+          <CategoryPill active={categoryId === null} onClick={() => setCategoryId(null)}>
+            {t("pos.all")}
+          </CategoryPill>
+          {categories.map((category) => (
+            <CategoryPill key={category.id} active={categoryId === category.id} onClick={() => setCategoryId(category.id)}>
+              {localizedName(locale, category.name, category.nameTh)}
+            </CategoryPill>
+          ))}
+        </div>
+        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-card to-transparent" />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label={t("pos.categoriesNext")}
+          onClick={() => stripRef.current?.scrollBy({ left: 280, behavior: "smooth" })}
+          className="absolute top-1/2 right-0 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:text-foreground"
+        >
+          <ChevronRight className="size-4" />
+        </button>
       </div>
 
       {errorKey ? (
@@ -153,16 +165,16 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
         </p>
       ) : null}
 
-      <ScrollArea className="min-h-0 flex-1 pr-3">
+      <ScrollArea className="min-h-0 flex-1 pr-2">
         {loading && variants.length === 0 ? (
           <ProductGridSkeleton />
         ) : variants.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-center text-sm text-muted-foreground">
-            <Package className="size-8" />
+            <Package className="size-8" strokeWidth={1.25} />
             {t("pos.noMatch")}
           </div>
         ) : (
-          <div className={`grid grid-cols-2 gap-3 transition-opacity xl:grid-cols-3 ${loading ? "opacity-70" : ""}`}>
+          <div className={`grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2.5 pb-2 transition-opacity ${loading ? "opacity-70" : ""}`}>
             {variants.map((variant) => (
               <ProductTile key={variant.id} variant={variant} onSelect={onSelectVariant} />
             ))}
@@ -170,5 +182,21 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
         )}
       </ScrollArea>
     </section>
+  );
+}
+
+/** One category in the horizontal strip. A dark pill is the active one. */
+function CategoryPill({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`h-8 shrink-0 snap-start rounded-full border px-3.5 text-[13px] leading-none whitespace-nowrap transition-colors ${
+        active ? "border-foreground bg-foreground font-medium text-background" : "border-border bg-card text-foreground/80 hover:border-foreground/40 hover:bg-muted"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

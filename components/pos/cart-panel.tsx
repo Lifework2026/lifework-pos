@@ -4,10 +4,8 @@ import { PauseCircle, ShoppingCart } from "lucide-react";
 import { CartLine } from "@/components/pos/cart-line";
 import { useOnline } from "@/components/network-status";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { formatBaht } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { useCartStore } from "@/store/useCartStore";
@@ -20,6 +18,10 @@ interface CartPanelProps {
   holding: boolean;
 }
 
+/**
+ * The right-hand side of the till: the bill so far, the discount, a large total, and the pay button.
+ * Reading order is top to bottom: what is on the bill, what it adds up to, then the one action that matters.
+ */
 export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }: CartPanelProps) {
   const { t } = useI18n();
   const online = useOnline();
@@ -34,38 +36,39 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
 
   const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
   const canCheckout = items.length > 0 && total > 0;
+  const saved = Math.max(0, subtotal - total);
 
   return (
-    <Card className="flex h-full min-h-0 flex-col">
-      <CardHeader className="flex flex-col gap-3 border-b">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
+      <header className="flex flex-col gap-2.5 border-b px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <ShoppingCart className="size-5" />
+          <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+            <ShoppingCart className="size-[18px]" />
             {t("pos.cart")}
-            <span className="text-sm font-normal text-muted-foreground">({t("pos.itemCount", { count: itemCount })})</span>
-          </CardTitle>
-          <Button variant="ghost" size="sm" onClick={clearCart} disabled={items.length === 0}>
+            <span className="num rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t("pos.itemCount", { count: itemCount })}</span>
+          </h2>
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={clearCart} disabled={items.length === 0}>
             {t("pos.clear")}
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Button variant="outline" size="sm" onClick={onHold} disabled={items.length === 0 || holding}>
+          <Button variant="outline" size="sm" className="h-8" onClick={onHold} disabled={items.length === 0 || holding}>
             <PauseCircle className="size-4" />
             {t("hold.hold")}
           </Button>
-          <Button variant="outline" size="sm" onClick={onOpenHeld}>
+          <Button variant="outline" size="sm" className="h-8" onClick={onOpenHeld}>
             {t("hold.held")}
             {heldCount > 0 ? (
-              <span className="ml-1 rounded-full bg-primary px-1.5 text-xs font-semibold text-primary-foreground">{heldCount}</span>
+              <span className="num ml-1 rounded-full bg-primary px-1.5 text-[11px] leading-4 font-semibold text-primary-foreground">{heldCount}</span>
             ) : null}
           </Button>
         </div>
-      </CardHeader>
+      </header>
 
-      <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
+      <div className="flex min-h-0 flex-1 flex-col">
         {items.length === 0 ? (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted-foreground">
-            <ShoppingCart className="size-8" />
+            <ShoppingCart className="size-8" strokeWidth={1.25} />
             {t("pos.emptyCart")}
           </div>
         ) : (
@@ -77,14 +80,16 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
             </ul>
           </ScrollArea>
         )}
+      </div>
 
-        <div className="flex flex-col gap-3 border-t p-4">
-          <div className="flex items-center justify-between text-sm">
+      <footer className="flex flex-col gap-3 border-t bg-card p-4 shadow-[0_-6px_12px_-10px_rgb(0_0_0/0.25)]">
+        <div className="flex flex-col gap-2 text-sm">
+          <div className="flex items-center justify-between">
             <span className="text-muted-foreground">{t("pos.subtotalBeforePromo")}</span>
-            <span className="tabular-nums">{formatBaht(subtotal)}</span>
+            <span className="num font-medium">{formatBaht(subtotal)}</span>
           </div>
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <label htmlFor="discount" className="text-muted-foreground">
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="discount" className="font-medium">
               {t("pos.manualDiscount")}
             </label>
             <Input
@@ -97,20 +102,30 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
               value={discount === 0 ? "" : discount}
               placeholder="0.00"
               onChange={(event) => setDiscount(Number(event.target.value))}
-              className="h-9 w-32 text-right tabular-nums"
+              className="num h-9 w-32 bg-card text-right text-[15px] font-medium"
               disabled={items.length === 0}
             />
           </div>
-          <Separator />
-          <div className="flex items-center justify-between">
-            <span className="text-base font-medium">{t("pos.total")}</span>
-            <span className="text-2xl font-bold tabular-nums">{formatBaht(total)}</span>
-          </div>
-          <Button size="lg" className="h-12 text-base" disabled={!canCheckout || !online} onClick={onCheckout}>
-            {t("pos.checkout")}
-          </Button>
         </div>
-      </CardContent>
-    </Card>
+
+        <div className="flex items-end justify-between gap-3 rounded-lg bg-muted px-3.5 py-3">
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-semibold">{t("pos.total")}</span>
+            {saved > 0 ? <span className="num text-xs font-medium text-emerald-700">{t("pos.youSave", { amount: `−${formatBaht(saved)}` })}</span> : null}
+          </div>
+          <span className="num text-[2rem] leading-none font-bold tracking-tight">{formatBaht(total)}</span>
+        </div>
+
+        <Button
+          size="lg"
+          className="h-14 w-full justify-between rounded-xl px-5 text-base font-semibold shadow-sm disabled:bg-muted-foreground/25 disabled:text-muted-foreground disabled:opacity-100"
+          disabled={!canCheckout || !online}
+          onClick={onCheckout}
+        >
+          <span>{t("pos.checkout")}</span>
+          <span className="num">{formatBaht(total)}</span>
+        </Button>
+      </footer>
+    </section>
   );
 }
