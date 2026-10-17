@@ -43,10 +43,10 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
       <header className="flex flex-col gap-2.5 border-b px-4 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="flex items-center gap-2 text-[15px] font-semibold">
+          <h2 className="flex items-center gap-2 text-[14px] font-extrabold">
             <ShoppingCart className="size-[18px]" />
             {t("pos.cart")}
-            <span className="num rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{t("pos.itemCount", { count: itemCount })}</span>
+            <span className="num rounded-[2px] bg-foreground px-1.5 py-0.5 text-[11px] font-bold text-background">{t("pos.itemCount", { count: itemCount })}</span>
           </h2>
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" onClick={clearCart} disabled={items.length === 0}>
             {t("pos.clear")}
@@ -60,7 +60,7 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
           <Button variant="outline" size="sm" className="h-8" onClick={onOpenHeld}>
             {t("hold.held")}
             {heldCount > 0 ? (
-              <span className="num ml-1 rounded-full bg-primary px-1.5 text-[11px] leading-4 font-semibold text-primary-foreground">{heldCount}</span>
+              <span className="num ml-1 rounded-[2px] bg-primary px-1.5 text-[11px] leading-4 font-bold text-primary-foreground">{heldCount}</span>
             ) : null}
           </Button>
         </div>
@@ -115,7 +115,7 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
 
         <div className="flex items-end justify-between gap-3 rounded-lg bg-muted px-3.5 py-3">
           <div className="flex flex-col gap-1">
-            <span className="text-sm font-semibold">{t("pos.total")}</span>
+            <span className="text-sm font-extrabold tracking-wider uppercase">{t("pos.total")}</span>
             {saved > 0 ? <span className="num text-xs font-medium text-emerald-700">{t("pos.youSave", { amount: `−${formatBaht(saved)}` })}</span> : null}
           </div>
           <span className="num text-[2rem] leading-none font-bold tracking-tight">{formatBaht(total)}</span>
@@ -123,7 +123,7 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
 
         <Button
           size="lg"
-          className="h-14 w-full justify-between rounded-xl px-5 text-base font-semibold shadow-sm disabled:bg-muted-foreground/25 disabled:text-muted-foreground disabled:opacity-100"
+          className="h-14 w-full justify-between rounded-[3px] bg-black px-5 text-base font-extrabold tracking-wider uppercase hover:bg-zinc-800 disabled:bg-muted-foreground/25 disabled:text-muted-foreground disabled:opacity-100"
           disabled={!canCheckout || !online}
           onClick={onCheckout}
         >

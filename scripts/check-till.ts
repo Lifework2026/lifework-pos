@@ -130,6 +130,23 @@ async function main(): Promise<void> {
   const noSession = await fetch(`${BASE_URL}/api/products?q=LW262TS116`);
   check(noSession.status === 401, "c) the product list needs a login", `HTTP ${noSession.status}`);
 
+  // d) The grouped grid: one entry per style, every variant present, and the same prices as the variant list.
+  const all = await get<{ styles: { name: string; imageUrl: string | null; variants: { price: string; barcode: string; imageUrl: string | null }[] }[] }>("/api/products/styles");
+  const styles = all.body?.styles ?? [];
+  const totalProducts = await prisma.product.count({ where: { isActive: true, variants: { some: { isActive: true } } } });
+  const totalVariants = await prisma.productVariant.count({ where: { isActive: true, product: { isActive: true } } });
+  check(all.status === 200 && styles.length === totalProducts, "d) the styles list has one entry per style", `${styles.length} of ${totalProducts}`);
+  check(styles.reduce((sum, s) => sum + s.variants.length, 0) === totalVariants, "d) every variant is inside its style", `${styles.reduce((sum, s) => sum + s.variants.length, 0)} of ${totalVariants}`);
+  check(new Set(styles.map((s) => s.name)).size === styles.length, "d) no style appears twice");
+  const withPhotoStyles = styles.filter((s) => s.imageUrl);
+  check(withPhotoStyles.every((s) => s.imageUrl?.endsWith(".webp")), "d) every style photo is a .webp address", `${withPhotoStyles.length} styles with a photo`);
+  for (const [style, price] of Object.entries(expected)) {
+    const found = styles.find((s) => s.name === style);
+    check(!!found && found.variants.length > 0 && found.variants.every((variant) => Number(variant.price) === price), `d) ${style} is one card and every variant costs ${price}`);
+  }
+  const wrongBarcode = styles.flatMap((s) => s.variants).filter((variant) => !variant.barcode).length;
+  check(wrongBarcode === 0, "d) every variant carries its barcode");
+
   // Every priced variant in the database matches what the till would charge (checked for all variants, one query).
   const free = await prisma.productVariant.count({ where: { price: { lte: 0 } } });
   check(free === 0, "no variant has a zero price", `${free}`);

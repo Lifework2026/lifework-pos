@@ -121,3 +121,29 @@ export interface ApiErrorBody {
   message: string;
   details?: unknown;
 }
+
+/** One sellable size and colour of a style, as the style picker needs it. Money is a fixed 2dp string. */
+export interface StyleVariant {
+  id: string;
+  sku: string;
+  barcode: string;
+  size: string;
+  colorId: string;
+  color: string;
+  price: string;
+  stockQuantity: number;
+  /** The photo for this colour: its own, else the style photo, else none. */
+  imageUrl: string | null;
+}
+
+/** A style with all its colours and sizes: the till shows one card per style. */
+export interface StyleSummary {
+  id: string;
+  name: string;
+  nameTh: string | null;
+  brand: string | null;
+  imageUrl: string | null;
+  promoTag: string | null;
+  categoryId: string;
+  variants: StyleVariant[];
+}

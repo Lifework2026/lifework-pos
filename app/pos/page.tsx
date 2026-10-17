@@ -193,7 +193,7 @@ export default function PosPage() {
       <main className="flex h-dvh min-w-[1100px] flex-col gap-3 overflow-hidden bg-canvas p-3">
         <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex min-w-0 items-baseline gap-3">
-            <h1 className="text-base font-semibold tracking-tight">Lifework POS</h1>
+            <h1 className="bg-foreground px-3 py-1.5 text-[13px] leading-none font-extrabold tracking-[0.18em] text-background">LIFEWORK // TERMINAL</h1>
             {lastSale ? (
               <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                 <CheckCircle2 className="size-3.5 shrink-0 text-emerald-600" />

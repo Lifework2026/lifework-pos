@@ -7,7 +7,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "tsx tests/pricing.test.ts && tsx tests/catalog.test.ts && tsx tests/shift.test.ts && tsx tests/security.test.ts && tsx tests/finance.test.ts && tsx tests/excel.test.ts && tsx tests/master-data.test.ts && tsx tests/product-preview.test.ts && tsx tests/text-codes.test.ts && tsx tests/master-hub.test.ts && tsx tests/catalog-matrix-sync.test.ts && tsx tests/category-migration.test.ts && tsx tests/vat-scanner.test.ts && tsx tests/receipt-render.test.ts && tsx tests/images-filter.test.ts && tsx tests/color-photos.test.ts && tsx tests/image-compress.test.ts && tsx tests/backup.test.ts && tsx tests/style-photos.test.ts && tsx tests/packing-import.test.ts && tsx tests/pos-ui.test.ts",
+    "test": "tsx tests/pricing.test.ts && tsx tests/catalog.test.ts && tsx tests/shift.test.ts && tsx tests/security.test.ts && tsx tests/finance.test.ts && tsx tests/excel.test.ts && tsx tests/master-data.test.ts && tsx tests/product-preview.test.ts && tsx tests/text-codes.test.ts && tsx tests/master-hub.test.ts && tsx tests/catalog-matrix-sync.test.ts && tsx tests/category-migration.test.ts && tsx tests/vat-scanner.test.ts && tsx tests/receipt-render.test.ts && tsx tests/images-filter.test.ts && tsx tests/color-photos.test.ts && tsx tests/image-compress.test.ts && tsx tests/backup.test.ts && tsx tests/style-photos.test.ts && tsx tests/packing-import.test.ts && tsx tests/pos-ui.test.ts && tsx tests/style-group.test.ts",
     "db:migrate": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "check:env": "node scripts/check-env.mjs",

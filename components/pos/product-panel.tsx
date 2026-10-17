@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Package, Radio, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ProductTile } from "@/components/pos/product-tile";
+import { StyleCard } from "@/components/pos/style-card";
+import { VariantPicker } from "@/components/pos/variant-picker";
 import { ProductGridSkeleton } from "@/components/pos/skeletons";
 import { useScannerInput } from "@/hooks/useScannerInput";
 import type { ScanDecision } from "@/lib/scanner-input";
@@ -12,7 +13,7 @@ import { useI18n } from "@/lib/i18n/client";
 import { BARCODE_INPUT_ID, focusBarcodeField } from "@/lib/pos-focus";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { localizedName } from "@/lib/payment-labels";
-import type { CategorySummary, VariantSummary } from "@/lib/pos-types";
+import type { CategorySummary, StyleSummary, VariantSummary } from "@/lib/pos-types";
 
 const SEARCH_DEBOUNCE_MS = 250;
 /** Recent searches kept in memory. Repeating a search or category shows the last result at once. */
@@ -32,14 +33,17 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategorySummary[]>([]);
-  const [variants, setVariants] = useState<VariantSummary[]>([]);
+  const [styles, setStyles] = useState<StyleSummary[]>([]);
+  /** The style whose colour and size are being chosen with the mouse. */
+  const [picked, setPicked] = useState<StyleSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [errorKey, setErrorKey] = useState<MessageKey | null>(null);
   const { handleChange, handleKeyDown } = useScannerInput({
     value: query,
     setValue: setQuery,
     onScan,
-    enabled: scannerActive,
+    // The scanner pauses while the picker is open, so a scan cannot land in the picker.
+    enabled: scannerActive && !picked,
     inputId: BARCODE_INPUT_ID,
   });
 
@@ -64,7 +68,7 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
   }, [query]);
 
   // Recent results, so a repeated search or category shows at once while a fresh copy loads in the background.
-  const cacheRef = useRef(new Map<string, VariantSummary[]>());
+  const cacheRef = useRef(new Map<string, StyleSummary[]>());
   const stripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -75,18 +79,18 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
     const key = params.toString();
 
     const cached = cacheRef.current.get(key);
-    if (cached) setVariants(cached);
+    if (cached) setStyles(cached);
 
     setLoading(true);
-    fetch(`/api/products?${key}`, { cache: "no-store", signal: controller.signal })
+    fetch(`/api/products/styles?${key}`, { cache: "no-store", signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error("products");
-        const body: { variants: VariantSummary[] } = await res.json();
+        const body: { styles: StyleSummary[] } = await res.json();
         const cache = cacheRef.current;
         cache.delete(key);
-        cache.set(key, body.variants);
+        cache.set(key, body.styles);
         if (cache.size > RESULT_CACHE_SIZE) cache.delete(cache.keys().next().value as string);
-        setVariants(body.variants);
+        setStyles(body.styles);
         setErrorKey(null);
       })
       .catch((err: unknown) => {
@@ -101,9 +105,13 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
   }, [debouncedQuery, categoryId]);
 
   // After a mouse click the cursor goes back to the barcode field, so the next scan is never lost.
-  function selectVariant(variant: VariantSummary): void {
+  function addPicked(variant: VariantSummary): void {
     onSelectVariant(variant);
-    focusBarcodeField();
+  }
+  function closePicker(): void {
+    setPicked(null);
+    // The scanner is switched back on in the next render; the cursor follows once the dialog has gone.
+    window.setTimeout(focusBarcodeField, 50);
   }
   function selectCategory(id: string | null): void {
     setCategoryId(id);
@@ -163,7 +171,7 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
           tabIndex={-1}
           aria-label={t("pos.categoriesNext")}
           onClick={() => stripRef.current?.scrollBy({ left: 280, behavior: "smooth" })}
-          className="absolute top-1/2 right-0 flex size-7 -translate-y-1/2 items-center justify-center rounded-full border bg-card text-muted-foreground shadow-sm hover:text-foreground"
+          className="absolute top-1/2 right-0 flex size-7 -translate-y-1/2 items-center justify-center rounded-[3px] border border-foreground/30 bg-card text-foreground hover:bg-foreground hover:text-background"
         >
           <ChevronRight className="size-4" />
         </button>
@@ -176,21 +184,22 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
       ) : null}
 
       <ScrollArea className="min-h-0 flex-1 pr-2">
-        {loading && variants.length === 0 ? (
+        {loading && styles.length === 0 ? (
           <ProductGridSkeleton />
-        ) : variants.length === 0 ? (
+        ) : styles.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-16 text-center text-sm text-muted-foreground">
             <Package className="size-8" strokeWidth={1.25} />
             {t("pos.noMatch")}
           </div>
         ) : (
           <div className={`grid grid-cols-4 gap-2.5 pb-2 min-[1280px]:grid-cols-5 min-[1600px]:grid-cols-6 transition-opacity ${loading ? "opacity-70" : ""}`}>
-            {variants.map((variant) => (
-              <ProductTile key={variant.id} variant={variant} onSelect={selectVariant} />
+            {styles.map((style) => (
+              <StyleCard key={style.id} style={style} onOpen={setPicked} />
             ))}
           </div>
         )}
       </ScrollArea>
+      <VariantPicker style={picked} onClose={closePicker} onAdd={addPicked} />
     </section>
   );
 }
@@ -202,8 +211,8 @@ function CategoryPill({ active, onClick, children }: { active: boolean; onClick:
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`h-8 shrink-0 snap-start rounded-full border px-3.5 text-[13px] leading-none whitespace-nowrap transition-colors ${
-        active ? "border-foreground bg-foreground font-medium text-background" : "border-border bg-card text-foreground/80 hover:border-foreground/40 hover:bg-muted"
+      className={`h-8 shrink-0 snap-start rounded-[3px] border px-3.5 text-[12px] leading-none font-bold tracking-wide whitespace-nowrap uppercase transition-colors ${
+        active ? "border-foreground bg-foreground text-background" : "border-foreground/25 bg-card text-foreground/80 hover:border-foreground hover:text-foreground"
       }`}
     >
       {children}

@@ -10,10 +10,12 @@ import { useI18n } from "@/lib/i18n/client";
 interface SignOutButtonProps {
   /** Called when the server refuses to sign out because a shift is still open. The till uses it to ask for the cash count. */
   onShiftOpen?: () => void;
+  /** "dark" is for a black background such as the back office sidebar. */
+  tone?: "light" | "dark";
 }
 
 /** Ends the session on the server, then returns to the sign-in page. Blocked while a cash-drawer shift is open. */
-export function SignOutButton({ onShiftOpen }: SignOutButtonProps = {}) {
+export function SignOutButton({ onShiftOpen, tone = "light" }: SignOutButtonProps = {}) {
   const router = useRouter();
   const { t } = useI18n();
   const [pending, setPending] = useState(false);
@@ -38,7 +40,13 @@ export function SignOutButton({ onShiftOpen }: SignOutButtonProps = {}) {
   }
 
   return (
-    <Button variant="outline" size="sm" onClick={signOut} disabled={pending}>
+    <Button
+      variant="outline"
+      size="sm"
+      className={tone === "dark" ? "rounded-[3px] border-zinc-700 bg-transparent text-zinc-200 hover:bg-zinc-800 hover:text-white" : undefined}
+      onClick={signOut}
+      disabled={pending}
+    >
       <LogOut className="size-4" />
       {t("common.signOut")}
     </Button>

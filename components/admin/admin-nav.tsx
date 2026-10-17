@@ -30,7 +30,7 @@ export function AdminNav({ groups }: { groups: AdminNavGroup[] }) {
     <nav className="flex flex-1 flex-col gap-2.5 overflow-y-auto px-3 py-2.5 text-sm" aria-label="Back office">
       {groups.map((group, index) => (
         <div key={group.title ?? index} className="flex flex-col gap-0.5">
-          {group.title ? <p className="px-2.5 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">{group.title}</p> : null}
+          {group.title ? <p className="px-2.5 pb-1 text-[10px] font-bold tracking-[0.16em] text-zinc-500 uppercase">{group.title}</p> : null}
           {group.items.map((item) => {
             const active = item.href === current;
             return (
@@ -39,8 +39,8 @@ export function AdminNav({ groups }: { groups: AdminNavGroup[] }) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-2.5 py-1 leading-snug transition-colors",
-                  active ? "bg-foreground font-medium text-background" : "text-foreground/75 hover:bg-muted hover:text-foreground",
+                  "rounded-[3px] px-2.5 py-1 leading-snug transition-colors",
+                  active ? "bg-white font-bold text-black" : "text-zinc-300 hover:bg-zinc-800 hover:text-white",
                 )}
               >
                 {item.label}
