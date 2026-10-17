@@ -2,6 +2,7 @@
 
 import { PauseCircle, ShoppingCart } from "lucide-react";
 import { CartLine } from "@/components/pos/cart-line";
+import { QuickBag } from "@/components/pos/quick-bag";
 import { useOnline } from "@/components/network-status";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,13 +18,15 @@ interface CartPanelProps {
   onOpenHeld: () => void;
   heldCount: number;
   holding: boolean;
+  /** Adds a free bag by SKU. Resolves true when it was added. */
+  onAddBag: (sku: string) => Promise<boolean>;
 }
 
 /**
  * The right-hand side of the till: the bill so far, the discount, a large total, and the pay button.
  * Reading order is top to bottom: what is on the bill, what it adds up to, then the one action that matters.
  */
-export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }: CartPanelProps) {
+export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding, onAddBag }: CartPanelProps) {
   const { t } = useI18n();
   const online = useOnline();
   const items = useCartStore((state) => state.items);
@@ -65,6 +68,8 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
           </Button>
         </div>
       </header>
+
+      <QuickBag onAdd={onAddBag} />
 
       <div className="flex min-h-0 flex-1 flex-col">
         {items.length === 0 ? (

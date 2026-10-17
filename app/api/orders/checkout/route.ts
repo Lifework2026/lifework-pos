@@ -13,6 +13,7 @@ import { checkoutSchema, type CheckoutInput } from "@/lib/orders/schemas";
 import { orderSelect, serializeOrder, type OrderRecord } from "@/lib/orders/serialize";
 import { EdcServiceError } from "@/lib/edc/service";
 import { getOpenShift } from "@/lib/shifts";
+import { isFreeBag } from "@/lib/catalog/free-bags";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,7 @@ async function placeOrder(tx: Prisma.TransactionClient, input: CheckoutInput, ca
 
   // Decrement stock for every line (including bags). Guarded so two sales cannot take the same units.
   for (const line of basket.lines) {
+    if (isFreeBag(line.sku)) continue; // free bags are not counted
     const result = await tx.productVariant.updateMany({
       where: { id: line.variantId, stockQuantity: { gte: line.quantity } },
       data: { stockQuantity: { decrement: line.quantity } },
@@ -169,7 +171,7 @@ async function placeOrder(tx: Prisma.TransactionClient, input: CheckoutInput, ca
   });
 
   await tx.inventoryMovement.createMany({
-    data: basket.lines.map((line) => ({
+    data: basket.lines.filter((line) => !isFreeBag(line.sku)).map((line) => ({
       variantId: line.variantId,
       type: "SALE",
       quantityChange: -line.quantity,

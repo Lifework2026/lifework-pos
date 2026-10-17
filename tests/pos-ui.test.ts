@@ -136,6 +136,20 @@ const read = (rel: string) => readFileSync(path.join(__dirname, "..", rel), "utf
     assert.ok(read("lib/pos-focus.ts").includes("pos-barcode-input"));
   });
 
+  await test("sales history: a button beside the shift chip opens a black-and-white right-hand drawer with the bill columns and a print button", () => {
+    const page = read("app/pos/page.tsx");
+    assert.ok(page.includes("[ {t(\"history.button\")} ]") && page.indexOf("<ShiftManager") < page.indexOf('t("history.button")'));
+    assert.ok(page.includes("<SalesHistoryDrawer") && page.includes("!historyOpen && shiftOpen"), "the scanner pauses while it is open");
+    assert.ok(page.includes("checkoutOpen || heldOpen || historyOpen"), "the cursor returns to the barcode field when it closes");
+    const drawer = read("components/pos/sales-history-drawer.tsx");
+    for (const key of ["history.receipt", "history.time", "history.payment", "history.total", "history.status", "history.print"]) assert.ok(drawer.includes(`"${key}"`), key);
+    for (const key of ["sales.statusCompleted", "sales.statusVoided", "sales.statusRefunded", "sales.statusPartial"]) assert.ok(drawer.includes(`"${key}"`), key);
+    assert.ok(drawer.includes("/api/orders/today") && drawer.includes("<ReceiptPreviewDialog") && drawer.includes("DialogClose"), "loads fresh, previews before printing, has an X");
+    assert.ok(drawer.includes("bg-foreground") && drawer.includes("right-0") && drawer.includes("rounded-none"), "a black header and a flush right edge");
+    const route = read("app/api/orders/today/route.ts");
+    assert.ok(route.includes("getCurrentSession") && route.includes("cashierId: session.id") && route.includes("export async function GET") && !route.includes("export async function POST"));
+  });
+
   await test("lost focus: the scanner field takes focus back by itself, also after Clear, a removed line, or a closed payment window", () => {
     const hook = read("hooks/useScannerInput.ts");
     assert.ok(hook.includes("window.setInterval(focusIfIdle") && hook.includes("window.clearInterval(timer)"), "a safety net for focus dropped without an event");

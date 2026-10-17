@@ -3,6 +3,7 @@ import { apiError } from "@/lib/api";
 import { requireUser } from "@/lib/api-helpers";
 import type { HeldPayload, ResumedBill, ResumedItem, ResumeWarning } from "@/lib/held-bills";
 import { variantImageUrl } from "@/lib/catalog/variant-image";
+import { FREE_BAG_CART_STOCK, isFreeBag } from "@/lib/catalog/free-bags";
 
 export const dynamic = "force-dynamic";
 
@@ -51,11 +52,12 @@ export async function POST(_request: Request, { params }: { params: { id: string
         warnings.push({ kind: "REMOVED", sku: held.variantId });
         continue;
       }
-      if (!variant.isActive || !variant.product.isActive || variant.stockQuantity <= 0) {
+      const counted = !isFreeBag(variant.sku);
+      if (!variant.isActive || !variant.product.isActive || (counted && variant.stockQuantity <= 0)) {
         warnings.push({ kind: "REMOVED", sku: variant.sku });
         continue;
       }
-      const quantity = Math.min(held.quantity, variant.stockQuantity);
+      const quantity = counted ? Math.min(held.quantity, variant.stockQuantity) : held.quantity;
       if (quantity < held.quantity) warnings.push({ kind: "REDUCED", sku: variant.sku, from: held.quantity, to: quantity });
 
       const price = Number(variant.price);
@@ -72,7 +74,7 @@ export async function POST(_request: Request, { params }: { params: { id: string
         sku: variant.sku,
         barcode: variant.barcode,
         price,
-        stockQuantity: variant.stockQuantity,
+        stockQuantity: counted ? variant.stockQuantity : FREE_BAG_CART_STOCK,
         quantity,
       });
     }

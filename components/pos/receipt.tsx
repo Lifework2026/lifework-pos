@@ -3,6 +3,7 @@
 import { formatBaht, parseMoney } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { paymentLabel, localizedName } from "@/lib/payment-labels";
+import { isFreeBag } from "@/lib/catalog/free-bags";
 import type { OrderDetails } from "@/lib/pos-types";
 
 
@@ -79,9 +80,9 @@ export function Receipt({ order }: ReceiptProps) {
         <div key={item.id} className="receipt-item">
           <p>
             {localizedName(locale, item.productName, item.productNameTh)}
-            {item.isBag ? ` ${t("receipt.bag")}` : ""}
+            {isFreeBag(item.sku) ? ` (${item.size})` : item.isBag ? ` ${t("receipt.bag")}` : ""}
           </p>
-          <p className="receipt-sub">{item.isBag ? item.sku : `${item.size} / ${item.color} · ${item.sku}`}</p>
+          <p className="receipt-sub">{item.isBag || isFreeBag(item.sku) ? item.sku : `${item.size} / ${item.color} · ${item.sku}`}</p>
           <div className="receipt-row">
             <span>
               {item.quantity} x {money(item.unitPrice)}

@@ -8,6 +8,7 @@ import { CartSkeleton } from "@/components/pos/skeletons";
 import { CheckoutDialog } from "@/components/pos/checkout-dialog";
 import { HeldBillsDialog } from "@/components/pos/held-bills-dialog";
 import { ProductPanel } from "@/components/pos/product-panel";
+import { SalesHistoryDrawer } from "@/components/pos/sales-history-drawer";
 import { ShiftManager } from "@/components/pos/shift-manager";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { SessionProvider } from "@/components/auth/session-context";
@@ -18,6 +19,7 @@ import { toast } from "@/components/ui/toast";
 import type { HeldBillSummary, ResumedBill } from "@/lib/held-bills";
 import { requestJson } from "@/lib/http";
 import { focusBarcodeField } from "@/lib/pos-focus";
+import { FREE_BAG_CART_STOCK, isFreeBag } from "@/lib/catalog/free-bags";
 import type { ScanDecision } from "@/lib/scanner-input";
 import { useI18n } from "@/lib/i18n/client";
 import type { ApiErrorBody, OrderDetails, VariantSummary } from "@/lib/pos-types";
@@ -35,7 +37,8 @@ function toCartVariant(variant: VariantSummary): CartVariant {
     sku: variant.sku,
     barcode: variant.barcode,
     price: Number(variant.price),
-    stockQuantity: variant.stockQuantity,
+    // A free bag is not stock-counted, so the cart never limits it.
+    stockQuantity: isFreeBag(variant.sku) ? FREE_BAG_CART_STOCK : variant.stockQuantity,
   };
 }
 
@@ -49,6 +52,7 @@ export default function PosPage() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [heldOpen, setHeldOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [heldCount, setHeldCount] = useState(0);
   const [holding, setHolding] = useState(false);
   const [lastScannedBarcode, setLastScannedBarcode] = useState<string | null>(null);
@@ -97,9 +101,9 @@ export default function PosPage() {
     [addItemByBarcode, t],
   );
 
-  const handleScan = useCallback(
+  /** Looks a code up and puts the item in the cart. Used by the scanner and by the free-bag buttons. */
+  const lookupAndAdd = useCallback(
     async ({ barcode, fast }: ScanDecision): Promise<boolean> => {
-      setLastScannedBarcode(barcode);
       try {
         const res = await fetch(`/api/products/search?barcode=${encodeURIComponent(barcode)}`, { cache: "no-store" });
 
@@ -124,14 +128,24 @@ export default function PosPage() {
     [addVariant, t],
   );
 
+  const handleScan = useCallback(
+    (decision: ScanDecision): Promise<boolean> => {
+      setLastScannedBarcode(decision.barcode);
+      return lookupAndAdd(decision);
+    },
+    [lookupAndAdd],
+  );
+
+  const addBag = useCallback((sku: string): Promise<boolean> => lookupAndAdd({ barcode: sku, converted: false, fast: true }), [lookupAndAdd]);
+
   // The barcode field takes input only while no dialog is open and a shift is running.
-  const scannerEnabled = !checkoutOpen && !heldOpen && shiftOpen;
+  const scannerEnabled = !checkoutOpen && !heldOpen && !historyOpen && shiftOpen;
 
   // When the payment or held-bills window closes, the cursor goes back to the barcode field. The browser would otherwise
   // hand focus back to the button that opened the window (the pay button, which is disabled once the sale is done), and
   // the next scan would land nowhere.
   const dialogWasOpen = useRef(false);
-  const dialogOpen = checkoutOpen || heldOpen;
+  const dialogOpen = checkoutOpen || heldOpen || historyOpen;
   useEffect(() => {
     if (dialogOpen) {
       dialogWasOpen.current = true;
@@ -230,6 +244,13 @@ export default function PosPage() {
               signOutRequested={signOutRequested}
               onSignOutRequestHandled={() => setSignOutRequested(false)}
             />
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="h-8 rounded-[3px] border border-foreground bg-card px-2.5 text-[11px] font-extrabold tracking-[0.1em] whitespace-nowrap uppercase transition-colors hover:bg-foreground hover:text-background"
+            >
+              [ {t("history.button")} ]
+            </button>
             <LocaleToggle />
             {user ? (
               <Badge variant="outline" className="gap-1 bg-card py-1">
@@ -265,6 +286,7 @@ export default function PosPage() {
                 onOpenHeld={() => setHeldOpen(true)}
                 heldCount={heldCount}
                 holding={holding}
+                onAddBag={addBag}
               />
             ) : (
               <CartSkeleton />
@@ -272,6 +294,7 @@ export default function PosPage() {
           </div>
         </div>
 
+        <SalesHistoryDrawer open={historyOpen} onOpenChange={setHistoryOpen} />
         <CheckoutDialog open={checkoutOpen} onOpenChange={setCheckoutOpen} onCompleted={handleCompleted} />
         <HeldBillsDialog
           open={heldOpen}

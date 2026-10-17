@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { apiError, formatMoney } from "@/lib/api";
 import type { StyleSummary } from "@/lib/pos-types";
 import { variantImageUrl } from "@/lib/catalog/variant-image";
+import { FREE_BAG_PRODUCT_SLUGS } from "@/lib/catalog/free-bags";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,8 @@ export async function GET(request: NextRequest): Promise<Response> {
     const products = await prisma.product.findMany({
       where: {
         isActive: true,
+        // The free bags are added from the bag selector in the cart, not from the grid.
+        slug: { notIn: FREE_BAG_PRODUCT_SLUGS },
         variants: { some: { isActive: true } },
         ...(categoryId ? { categoryId } : {}),
         ...(searchMatch.length > 0 ? { OR: searchMatch } : {}),

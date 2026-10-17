@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { BAG_SKUS, LOYALTY, MEMBER_DISCOUNT_SCALED } from "@/lib/store-config";
 import { bahtToSatang, calculatePricing, PricingError, type PricingResult } from "@/lib/pricing";
 import { OrderError } from "@/lib/orders/errors";
+import { isFreeBag } from "@/lib/catalog/free-bags";
 
 /** Input for quoting or charging a basket. Prices are the amounts the till displayed, in baht. */
 export interface BasketInput {
@@ -116,7 +117,8 @@ export async function priceBasket(db: Prisma.TransactionClient, input: BasketInp
         received: requested.unitPrice.toFixed(2),
       });
     }
-    if (variant.stockQuantity < requested.quantity) {
+    // A free shopping bag is not counted, so it never runs out.
+    if (variant.stockQuantity < requested.quantity && !isFreeBag(variant.sku)) {
       throw new OrderError(409, "INSUFFICIENT_STOCK", `Only ${variant.stockQuantity} of ${variant.sku} left in stock.`, {
         variantId,
         requested: requested.quantity,
