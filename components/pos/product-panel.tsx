@@ -9,13 +9,12 @@ import { ProductGridSkeleton } from "@/components/pos/skeletons";
 import { useScannerInput } from "@/hooks/useScannerInput";
 import type { ScanDecision } from "@/lib/scanner-input";
 import { useI18n } from "@/lib/i18n/client";
+import { BARCODE_INPUT_ID, focusBarcodeField } from "@/lib/pos-focus";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { localizedName } from "@/lib/payment-labels";
 import type { CategorySummary, VariantSummary } from "@/lib/pos-types";
 
 const SEARCH_DEBOUNCE_MS = 250;
-/** The POS barcode field. Scanning is handled here and nowhere else on the page. */
-const BARCODE_INPUT_ID = "pos-barcode-input";
 /** Recent searches kept in memory. Repeating a search or category shows the last result at once. */
 const RESULT_CACHE_SIZE = 40;
 
@@ -101,6 +100,16 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
     return () => controller.abort();
   }, [debouncedQuery, categoryId]);
 
+  // After a mouse click the cursor goes back to the barcode field, so the next scan is never lost.
+  function selectVariant(variant: VariantSummary): void {
+    onSelectVariant(variant);
+    focusBarcodeField();
+  }
+  function selectCategory(id: string | null): void {
+    setCategoryId(id);
+    focusBarcodeField();
+  }
+
   return (
     <section className="flex h-full min-h-0 flex-col gap-3">
       <div className="flex items-center gap-3">
@@ -109,6 +118,7 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
           <Input
             value={query}
             id={BARCODE_INPUT_ID}
+            autoFocus
             onChange={handleChange}
             placeholder={t("pos.searchPlaceholder")}
             className="h-10 bg-card pl-9 text-[15px]"
@@ -138,11 +148,11 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
           }}
           className="scrollbar-none flex snap-x gap-1.5 overflow-x-auto scroll-smooth px-1 py-0.5 pr-10"
         >
-          <CategoryPill active={categoryId === null} onClick={() => setCategoryId(null)}>
+          <CategoryPill active={categoryId === null} onClick={() => selectCategory(null)}>
             {t("pos.all")}
           </CategoryPill>
           {categories.map((category) => (
-            <CategoryPill key={category.id} active={categoryId === category.id} onClick={() => setCategoryId(category.id)}>
+            <CategoryPill key={category.id} active={categoryId === category.id} onClick={() => selectCategory(category.id)}>
               {localizedName(locale, category.name, category.nameTh)}
             </CategoryPill>
           ))}
@@ -174,9 +184,9 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
             {t("pos.noMatch")}
           </div>
         ) : (
-          <div className={`grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-2.5 pb-2 transition-opacity ${loading ? "opacity-70" : ""}`}>
+          <div className={`grid grid-cols-4 gap-2.5 pb-2 min-[1280px]:grid-cols-5 min-[1600px]:grid-cols-6 transition-opacity ${loading ? "opacity-70" : ""}`}>
             {variants.map((variant) => (
-              <ProductTile key={variant.id} variant={variant} onSelect={onSelectVariant} />
+              <ProductTile key={variant.id} variant={variant} onSelect={selectVariant} />
             ))}
           </div>
         )}

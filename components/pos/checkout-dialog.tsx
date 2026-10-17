@@ -496,9 +496,9 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                         {Number(quote.totals.pointsDiscount) > 0 ? (
                           <QuoteRow label={t("checkout.pointsRedeemed")} value={`-${quote.totals.pointsDiscount}`} />
                         ) : null}
-                        <div className="mt-1 flex justify-between border-t pt-2 text-base font-semibold">
-                          <dt>{t("checkout.totalDue")}</dt>
-                          <dd className="tabular-nums">{formatBaht(Number(quote.totals.total))}</dd>
+                        <div className="mt-1 flex items-end justify-between border-t pt-2 font-semibold">
+                          <dt className="text-base">{t("checkout.totalDue")}</dt>
+                          <dd className="num text-3xl leading-none font-bold tracking-tight">{formatBaht(Number(quote.totals.total))}</dd>
                         </div>
                         {member && quote.pointsEarned > 0 ? (
                           <p className="text-xs text-muted-foreground">{t("checkout.memberEarns", { count: quote.pointsEarned })}</p>
@@ -524,7 +524,6 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                         key={line.id}
                         index={index}
                         line={line}
-                        dueSatang={dueSatang}
                         disabled={submitting || !!line.card}
                         pending={pendingIds.has(line.id)}
                         canRemove={lines.length > 1 && !line.card && !pendingIds.has(line.id)}
@@ -532,6 +531,9 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                         onRemove={() => removeLine(line.id)}
                         onApproved={(card) => approveCard(line.id, card)}
                         onPendingChange={(pending) => setLinePending(line.id, pending)}
+                        onSubmit={() => {
+                          if (canSubmit) void submit();
+                        }}
                       />
                     ))}
 
@@ -552,7 +554,7 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                 <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting || cardPending}>
                   {t("common.cancel")}
                 </Button>
-                <Button size="lg" onClick={() => void submit()} disabled={!canSubmit}>
+                <Button size="lg" className="h-12 min-w-44 px-8 text-base font-semibold" onClick={() => void submit()} disabled={!canSubmit}>
                   {submitting ? <Loader2 className="size-4 animate-spin" /> : null}
                   {t("checkout.confirm")}
                 </Button>
@@ -577,7 +579,6 @@ function QuoteRow({ label, value }: { label: string; value: string }) {
 interface PaymentLineProps {
   index: number;
   line: PaymentDraft;
-  dueSatang: number;
   disabled: boolean;
   /** A terminal payment is waiting for this line. The method and amount stay locked until it finishes. */
   pending: boolean;
@@ -586,12 +587,13 @@ interface PaymentLineProps {
   onRemove: () => void;
   onApproved: (card: ApprovedCard) => void;
   onPendingChange: (pending: boolean) => void;
+  /** Enter in the cash-received box: completes the sale when it can be completed. */
+  onSubmit: () => void;
 }
 
 function PaymentLine({
   index,
   line,
-  dueSatang,
   disabled,
   pending,
   canRemove,
@@ -599,6 +601,7 @@ function PaymentLine({
   onRemove,
   onApproved,
   onPendingChange,
+  onSubmit,
 }: PaymentLineProps) {
   const { t } = useI18n();
   const locked = disabled || pending;
@@ -650,37 +653,52 @@ function PaymentLine({
       {line.method === "CASH" ? (
         <>
           <label className="flex items-center justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">{t("checkout.cashReceived")}</span>
+            <span className="font-medium">{t("checkout.cashReceived")}</span>
             <Input
               type="number"
               inputMode="decimal"
               min={0}
               step="0.01"
+              autoFocus
+              id={`cash-received-${line.id}`}
               value={line.tendered}
               onChange={(event) => onChange({ tendered: event.target.value })}
-              className="h-9 w-40 text-right tabular-nums"
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  onSubmit();
+                }
+              }}
+              className="num h-11 w-44 text-right text-xl font-semibold"
               disabled={locked}
             />
           </label>
-          <div className="flex flex-wrap gap-1.5">
-            {Array.from(new Set([dueSatang, ...BILL_DENOMINATIONS.map((b) => b * 100)]))
-              .filter((value) => value >= amountSatang && value > 0)
-              .slice(0, 4)
-              .map((value) => (
-                <Button
-                  key={value}
-                  size="sm"
-                  variant="secondary"
-                  disabled={locked}
-                  onClick={() => onChange({ tendered: satangToDecimal(value) })}
-                >
-                  {value === dueSatang ? t("checkout.exact") : formatBaht(value / 100)}
-                </Button>
-              ))}
+          {/* Quick cash: the same four buttons in the same places every time, so a hand learns them. A note smaller than the
+              amount is greyed out instead of hidden. */}
+          <div className="grid grid-cols-4 gap-1.5">
+            {[amountSatang, ...BILL_DENOMINATIONS.map((b) => b * 100)].map((value, position) => (
+              <Button
+                key={position}
+                size="sm"
+                variant="secondary"
+                className="num h-10 text-sm font-semibold"
+                disabled={locked || amountSatang <= 0 || value < amountSatang}
+                onClick={() => {
+                  onChange({ tendered: satangToDecimal(value) });
+                  // The cursor goes back to the cash box, so Enter completes the sale without reaching for the mouse.
+                  document.getElementById(`cash-received-${line.id}`)?.focus();
+                }}
+              >
+                {position === 0 ? t("checkout.exact") : formatBaht(value / 100).replace(/\.00$/, "")}
+              </Button>
+            ))}
           </div>
-          <p className="text-sm">
-            {t("checkout.change")} <span className="font-semibold tabular-nums">{change !== null ? formatBaht(change / 100) : "—"}</span>
-          </p>
+          <div className="flex items-end justify-between rounded-md bg-muted px-3 py-2">
+            <span className="text-sm font-medium">{t("checkout.change")}</span>
+            <span className={`num text-2xl leading-none font-bold ${change !== null ? "text-emerald-700" : "text-muted-foreground"}`}>
+              {change !== null ? formatBaht(change / 100) : "—"}
+            </span>
+          </div>
         </>
       ) : null}
 

@@ -27,8 +27,9 @@ export interface ProductCardProps {
  * The product card from the sales grid. The till's ProductTile and the back-office import preview both render it,
  * so a preview looks exactly like the till. The preview-only props default to the till's markup.
  *
- * Compact on purpose: a square photo on a white mat, then name, size and colour chips, price and stock, then the SKU.
- * A sold-out card is muted (grey photo, grey price) with a small badge on the photo; it is never hidden or struck out.
+ * Compact on purpose: a 5:4 photo on a white mat, then name, size and colour chips, price and stock, then the SKU.
+ * A sold-out card keeps its photo, colours and price at full strength, so the catalogue can be judged by eye. It only gets a
+ * small badge on the photo and a red stock figure, and its button cannot be pressed.
  */
 export function ProductCard({
   name,
@@ -50,7 +51,6 @@ export function ProductCard({
     <div
       className={cn(
         "flex h-full flex-col overflow-hidden rounded-lg border bg-card transition-colors group-hover/tile:border-foreground/35",
-        soldOut && "bg-muted/40",
         className,
       )}
     >
@@ -59,7 +59,7 @@ export function ProductCard({
           src={imageUrl}
           alt={name}
           fit="contain"
-          className={cn("aspect-square w-full rounded-none", imageUrl ? "bg-white" : "bg-muted/70", soldOut && "opacity-60 grayscale")}
+          className={cn("aspect-[5/4] w-full rounded-none", imageUrl ? "bg-white" : "bg-muted/70")}
         />
         {soldOut ? (
           <span className="absolute top-1.5 left-1.5 rounded bg-foreground/85 px-1.5 py-0.5 text-[10px] leading-none font-medium text-background">
@@ -74,7 +74,7 @@ export function ProductCard({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col gap-1.5 border-t p-2.5">
-        <p className={cn("truncate text-[13px] leading-tight font-semibold", soldOut && "text-muted-foreground")} title={name}>
+        <p className="truncate text-[13px] leading-tight font-semibold" title={name}>
           {name}
         </p>
         {categoryName ? <p className="truncate text-[11px] text-muted-foreground">{categoryName}</p> : null}
@@ -108,8 +108,8 @@ export function ProductCard({
         </div>
 
         <div className="mt-auto flex items-baseline justify-between gap-2 pt-0.5">
-          <span className={cn("num text-[15px] leading-none font-bold", soldOut && "font-semibold text-muted-foreground")}>{formatBaht(price)}</span>
-          <span className="num text-[11px] leading-none text-muted-foreground">{stockLabel}</span>
+          <span className="num text-[15px] leading-none font-bold">{formatBaht(price)}</span>
+          <span className={cn("num text-[11px] leading-none", soldOut ? "font-medium text-destructive" : "text-muted-foreground")}>{stockLabel}</span>
         </div>
         <p className="truncate font-mono text-[10px] leading-none text-muted-foreground/80">{sku}</p>
       </div>

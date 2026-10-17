@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatBaht } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
+import { focusBarcodeField } from "@/lib/pos-focus";
 import { useCartStore } from "@/store/useCartStore";
 
 interface CartPanelProps {
@@ -73,7 +74,7 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
           </div>
         ) : (
           <ScrollArea className="min-h-0 flex-1">
-            <ul className="flex flex-col divide-y">
+            <ul className="flex flex-col divide-y" onClickCapture={focusBarcodeField}>
               {items.map((item) => (
                 <CartLine key={item.variantId} item={item} onChangeQuantity={updateQuantity} onRemove={removeItem} />
               ))}
@@ -102,6 +103,10 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
               value={discount === 0 ? "" : discount}
               placeholder="0.00"
               onChange={(event) => setDiscount(Number(event.target.value))}
+              onKeyDown={(event) => {
+                // Enter finishes typing the discount and hands the cursor back to the scanner.
+                if (event.key === "Enter") focusBarcodeField();
+              }}
               className="num h-9 w-32 bg-card text-right text-[15px] font-medium"
               disabled={items.length === 0}
             />

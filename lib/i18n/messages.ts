@@ -211,6 +211,9 @@ const en = {
 
   // Navigation
   "nav.dashboard": "Dashboard",
+  "nav.groupSales": "Sales",
+  "nav.groupProducts": "Products",
+  "nav.groupStock": "Stock",
   "nav.sales": "Sales",
   "nav.stock": "Stock",
   "nav.receive": "Receive / adjust",
@@ -1151,6 +1154,9 @@ const th: Record<MessageKey, string> = {
   "preview.none": "ไม่มีใบเสร็จ",
 
   "nav.dashboard": "ภาพรวม",
+  "nav.groupSales": "การขาย",
+  "nav.groupProducts": "สินค้า",
+  "nav.groupStock": "สต็อก",
   "nav.sales": "รายการขาย",
   "nav.stock": "สต็อก",
   "nav.receive": "รับสินค้า / ปรับสต็อก",

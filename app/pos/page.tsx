@@ -190,7 +190,7 @@ export default function PosPage() {
 
   return (
     <SessionProvider value={user}>
-      <main className="flex min-h-dvh flex-col gap-3 bg-canvas p-3 lg:h-dvh">
+      <main className="flex h-dvh min-w-[1100px] flex-col gap-3 overflow-hidden bg-canvas p-3">
         <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <div className="flex min-w-0 items-baseline gap-3">
             <h1 className="text-base font-semibold tracking-tight">Lifework POS</h1>
@@ -226,7 +226,7 @@ export default function PosPage() {
           </div>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_380px] gap-3">
           <div className="min-h-0 rounded-xl border bg-card p-3">
             <ProductPanel
               onSelectVariant={addVariant}
@@ -236,7 +236,7 @@ export default function PosPage() {
             />
           </div>
 
-          <div className="min-h-[24rem] lg:min-h-0">
+          <div className="min-h-0">
             {user ? (
               <CartPanel
                 onCheckout={() => setCheckoutOpen(true)}
