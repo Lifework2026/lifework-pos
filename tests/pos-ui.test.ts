@@ -40,8 +40,27 @@ const read = (rel: string) => readFileSync(path.join(__dirname, "..", rel), "utf
     }
   });
 
-  await test("brand: the terminal logo, and the Radog placeholder instead of a T-shirt for a product with no photo", () => {
-    assert.ok(read("app/pos/page.tsx").includes("LIFEWORK // TERMINAL"));
+  await test("brand files: the logo and Radog pictures exist as transparent PNGs, and every path the code uses points at one", async () => {
+    const sharp = (await import("sharp")).default;
+    for (const file of ["radog.png", "main-logo.png", "main-logo-white.png"]) {
+      const full = path.join(__dirname, "..", "public", "brand", file);
+      assert.ok(existsSync(full), `${file} exists`);
+      const meta = await sharp(full).metadata();
+      assert.equal(meta.format, "png");
+      assert.equal(meta.hasAlpha, true, `${file} is transparent`);
+      assert.ok((meta.width ?? 0) >= 250, `${file} is at least 250px wide`);
+    }
+    const used = ["app/pos/page.tsx", "app/admin/layout.tsx", "components/brand/radog-mark.tsx"].flatMap((file) =>
+      Array.from(read(file).matchAll(/"(\/brand\/[a-z-]+\.[a-z]+)"/g)).map((m) => m[1]),
+    );
+    assert.ok(used.length >= 3, "the pages reference the brand files");
+    for (const url of used) assert.ok(existsSync(path.join(__dirname, "..", "public", url)), `${url} exists`);
+  });
+
+  await test("brand: the logo picture in the till header (with the old text kept for screen readers), and the Radog placeholder instead of a T-shirt", () => {
+    const page = read("app/pos/page.tsx");
+    assert.ok(page.includes('src="/brand/main-logo.png"') && page.includes("LIFEWORK // TERMINAL") && page.includes("sr-only") && page.includes("h-9"));
+    assert.ok(read("app/admin/layout.tsx").includes('src="/brand/main-logo-white.png"'), "the black sidebar uses the white logo");
     const thumb = read("components/pos/product-thumb.tsx");
     assert.ok(thumb.includes("RadogMark") && !thumb.includes("Shirt"));
     const mark = read("components/brand/radog-mark.tsx");

@@ -36,8 +36,8 @@ export function ProductThumb({ src, alt, className = "", fit = "cover" }: Produc
           className={cn("size-full", fit === "contain" ? "object-contain" : "object-cover")}
         />
       ) : (
-        <div className="flex size-full items-center justify-center text-foreground/15" aria-hidden>
-          <RadogMark className="size-3/5 max-h-full" />
+        <div className="flex size-full items-center justify-center bg-muted p-[9%] text-foreground/15" aria-hidden>
+          <RadogMark className="h-full max-h-full w-auto max-w-full" />
         </div>
       )}
     </div>

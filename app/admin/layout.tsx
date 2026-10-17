@@ -66,9 +66,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex h-dvh min-w-[1100px] bg-canvas">
       <aside className="flex w-56 shrink-0 flex-col bg-zinc-950 text-white">
         <div className="flex flex-col gap-2.5 border-b border-zinc-800 px-4 py-3">
-          <Link href="/admin" className="text-[15px] leading-tight font-extrabold tracking-[0.14em] uppercase">
-            Lifework
-            <span className="block text-[10px] font-bold tracking-[0.2em] text-zinc-500">{t("common.backOffice")}</span>
+          <Link href="/admin" className="flex flex-col gap-1.5">
+            <span className="sr-only">Lifework</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/main-logo-white.png" alt="" aria-hidden draggable={false} className="h-9 w-auto self-start" />
+            <span className="text-[10px] leading-none font-bold tracking-[0.2em] text-zinc-500 uppercase">{t("common.backOffice")}</span>
           </Link>
           <Link href="/pos" className={cn(buttonVariants({ size: "sm" }), "h-9 w-full justify-center rounded-[3px] bg-white text-sm font-bold tracking-wide text-black uppercase hover:bg-zinc-200")}>
             <ShoppingCart className="size-4" />

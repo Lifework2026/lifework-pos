@@ -3,12 +3,10 @@
 import { useState } from "react";
 
 /**
- * The Radog mark, shown behind a product that has no photo. It uses the brand artwork when the file is there:
- *
- *   public/brand/radog.png    the French bulldog head, black line art on white or transparent (PNG, about 400-800 px)
- *
- * The picture is multiplied onto the grey placeholder, so a white background disappears and the lines stay. If the file is
- * missing the built-in silhouette below is drawn instead, so the till never shows a broken image.
+ * The Radog mark, shown behind a product that has no photo. It is the brand artwork, public/brand/radog.png: the French
+ * bulldog head as black line art on a transparent background (made from the supplied picture by
+ * scripts/prepare-brand-assets.ts). It is drawn faint and whole, never stretched. If the file is ever missing, the
+ * built-in silhouette below is drawn instead, so the till never shows a broken image.
  */
 export function RadogMark({ className }: { className?: string }) {
   const [missing, setMissing] = useState(false);
@@ -22,7 +20,7 @@ export function RadogMark({ className }: { className?: string }) {
         aria-hidden
         draggable={false}
         onError={() => setMissing(true)}
-        className={`${className ?? ""} object-contain opacity-35 mix-blend-multiply`}
+        className={`${className ?? ""} object-contain opacity-40`}
       />
     );
   }
