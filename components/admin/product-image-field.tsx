@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { CheckCircle2, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import { ProductThumb } from "@/components/pos/product-thumb";
 import { Button } from "@/components/ui/button";
 import { prepareProductPhoto } from "@/lib/client-image";
@@ -21,7 +22,21 @@ interface ProductImageFieldProps {
   storageReady: boolean;
   disabled?: boolean;
   alt: string;
+  /**
+   * The saved product. When set, a photo is uploaded and saved on the product in one request, and Remove clears it at
+   * once. Without it (a product that is not created yet) the photo is kept in the form and saved with the product.
+   */
+  productId?: string | null;
 }
+
+type Status =
+  | { kind: "idle" }
+  | { kind: "uploading" }
+  | { kind: "removing" }
+  | { kind: "saved"; message: string }
+  | { kind: "error"; message: string };
+
+const SAVED_MESSAGE_MS = 5000;
 
 const ERROR_KEYS: Record<string, MessageKey> = {
   STORAGE_NOT_CONFIGURED: "img.notConfigured",
@@ -29,33 +44,65 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   UNSUPPORTED_TYPE: "img.unsupported",
 };
 
-/** Photo picker for a product. Resizes in the browser, uploads to storage, and reports the stored URL. */
-export function ProductImageField({ value, onChange, storageReady, disabled, alt }: ProductImageFieldProps) {
+/** Photo picker for a product. Resizes in the browser, uploads to storage, and saves the address on the product. */
+export function ProductImageField({ value, onChange, storageReady, disabled, alt, productId = null }: ProductImageFieldProps) {
   const { t } = useI18n();
+  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const busy = status.kind === "uploading" || status.kind === "removing";
+
+  // A success message fades away on its own. An error stays until the next action.
+  useEffect(() => {
+    if (status.kind !== "saved") return;
+    const timer = window.setTimeout(() => setStatus({ kind: "idle" }), SAVED_MESSAGE_MS);
+    return () => window.clearTimeout(timer);
+  }, [status]);
 
   async function handleFile(file: File): Promise<void> {
-    setError(null);
-    setUploading(true);
+    setStatus({ kind: "uploading" });
     try {
       const prepared = await prepareProductPhoto(file);
       const form = new FormData();
       form.append("file", prepared);
-      const res = await fetch("/api/admin/uploads/product-image", { method: "POST", body: form });
+      const endpoint = productId ? `/api/admin/products/${productId}/image` : "/api/admin/uploads/product-image";
+      const res = await fetch(endpoint, { method: "POST", body: form });
       const body = (await res.json().catch(() => null)) as (Partial<ProductImage> & ApiErrorBody) | null;
       if (!res.ok || !body?.url || !body.path) {
         const key = body?.error ? ERROR_KEYS[body.error] : undefined;
-        setError(key ? t(key) : (body?.message ?? t("img.failed")));
+        setStatus({ kind: "error", message: key ? t(key) : (body?.message ?? t("img.failed")) });
         return;
       }
       onChange({ url: body.url, path: body.path });
+      setStatus({ kind: "saved", message: productId ? t("img.savedToProduct") : t("img.readyToSave") });
+      // The saved photo also shows in the product list, so refresh the server-rendered pages.
+      if (productId) router.refresh();
     } catch {
-      setError(t("img.failed"));
+      setStatus({ kind: "error", message: t("img.failed") });
     } finally {
-      setUploading(false);
       if (inputRef.current) inputRef.current.value = "";
+    }
+  }
+
+  async function handleRemove(): Promise<void> {
+    if (!productId) {
+      onChange(null);
+      setStatus({ kind: "idle" });
+      return;
+    }
+    setStatus({ kind: "removing" });
+    try {
+      const res = await fetch(`/api/admin/products/${productId}/image`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as ApiErrorBody | null;
+        setStatus({ kind: "error", message: body?.message ?? t("img.failed") });
+        return;
+      }
+      onChange(null);
+      setStatus({ kind: "saved", message: t("img.removedFromProduct") });
+      router.refresh();
+    } catch {
+      setStatus({ kind: "error", message: t("img.failed") });
     }
   }
 
@@ -70,7 +117,7 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
             accept="image/jpeg,image/png,image/webp"
             className="sr-only"
             id="product-photo"
-            disabled={disabled || uploading || !storageReady}
+            disabled={disabled || busy || !storageReady}
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) void handleFile(file);
@@ -80,28 +127,45 @@ export function ProductImageField({ value, onChange, storageReady, disabled, alt
             type="button"
             variant="outline"
             size="sm"
-            disabled={disabled || uploading || !storageReady}
+            disabled={disabled || busy || !storageReady}
             onClick={() => inputRef.current?.click()}
           >
-            {uploading ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
+            {status.kind === "uploading" ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}
             {value ? t("img.replace") : t("img.choose")}
           </Button>
           {value ? (
-            <Button type="button" variant="ghost" size="sm" className="text-destructive" disabled={disabled || uploading} onClick={() => onChange(null)}>
-              <Trash2 className="size-4" /> {t("img.remove")}
+            <Button type="button" variant="ghost" size="sm" className="text-destructive" disabled={disabled || busy} onClick={() => void handleRemove()}>
+              {status.kind === "removing" ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />} {t("img.remove")}
             </Button>
           ) : null}
           <p className="text-xs text-muted-foreground">{t("img.hint")}</p>
         </div>
       </div>
       {!storageReady ? (
-        <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">{t("img.notConfigured")}</p>
+        <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">{t("img.notConfigured")}</p>
       ) : null}
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      <div aria-live="polite" className="min-h-5">
+        {status.kind === "uploading" ? (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> {t("img.uploading")}
+          </p>
+        ) : null}
+        {status.kind === "removing" ? (
+          <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-4 animate-spin" /> {t("common.loading")}
+          </p>
+        ) : null}
+        {status.kind === "saved" ? (
+          <p role="status" className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="size-4" /> {status.message}
+          </p>
+        ) : null}
+        {status.kind === "error" ? (
+          <p role="alert" className="text-sm text-destructive">
+            {status.message}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }

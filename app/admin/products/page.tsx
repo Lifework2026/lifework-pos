@@ -1,7 +1,8 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
 import { ActionBar } from "@/components/admin/action-bar";
+import { ProductFilters } from "@/components/admin/product-filters";
 import { ProductThumb } from "@/components/pos/product-thumb";
+import { parseProductFilter, productWhere, type ProductFilterParams } from "@/lib/catalog/product-filter";
 import { prisma } from "@/lib/prisma";
 import { formatBaht } from "@/lib/format";
 import { getServerLocale, serverT } from "@/lib/i18n/server";
@@ -9,36 +10,19 @@ import { localizedName } from "@/lib/payment-labels";
 
 export const dynamic = "force-dynamic";
 
-const ROW_LIMIT = 300;
+const ROW_LIMIT = 500;
 const SHOWN_VARIANTS = 3;
 
 interface ProductsPageProps {
-  searchParams: { q?: string; category?: string; status?: string };
+  searchParams: ProductFilterParams;
 }
 
 /** Product catalogue: photo, category code, SKU and barcode, stock and price range at a glance. */
 export default async function ProductsPage({ searchParams }: ProductsPageProps) {
   const locale = getServerLocale();
   const t = serverT(locale);
-  const q = (searchParams.q ?? "").trim().slice(0, 100);
-  const categoryId = searchParams.category ?? "";
-  const status = searchParams.status === "active" || searchParams.status === "inactive" ? searchParams.status : "";
-
-  const where: Prisma.ProductWhereInput = {
-    ...(categoryId ? { categoryId } : {}),
-    ...(status ? { isActive: status === "active" } : {}),
-    ...(q
-      ? {
-          OR: [
-            { name: { contains: q, mode: "insensitive" } },
-            { nameTh: { contains: q, mode: "insensitive" } },
-            { brand: { contains: q, mode: "insensitive" } },
-            { variants: { some: { sku: { contains: q, mode: "insensitive" } } } },
-            { variants: { some: { barcode: q } } },
-          ],
-        }
-      : {}),
-  };
+  const filter = parseProductFilter(searchParams);
+  const where = productWhere(filter);
 
   const [products, total, categories, colorCount] = await Promise.all([
     prisma.product.findMany({
@@ -68,11 +52,10 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
       },
     }),
     prisma.product.count({ where }),
-    prisma.category.findMany({ select: { id: true, name: true, nameTh: true }, orderBy: { name: "asc" } }),
+    prisma.category.findMany({ select: { code: true, name: true, nameTh: true }, orderBy: { code: "asc" } }),
     prisma.color.count(),
   ]);
 
-  const field = "h-9 rounded-md border bg-background px-3 text-sm";
   const linkButton = "inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-muted";
 
   return (
@@ -96,39 +79,7 @@ export default async function ProductsPage({ searchParams }: ProductsPageProps) 
           <span className="underline">{t("nav.masterData")}</span>
         </Link>
       ) : null}
-      <form className="grid gap-3 rounded-xl border bg-background p-4 md:grid-cols-[1fr_200px_160px_auto] md:items-end">
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">{t("pos.searchLabel")}</span>
-          <input name="q" defaultValue={q} placeholder={t("products.searchPlaceholder")} className={field} />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">{t("products.category")}</span>
-          <select name="category" defaultValue={categoryId} className={field}>
-            <option value="">{t("products.allCategories")}</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {localizedName(locale, category.name, category.nameTh)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="text-muted-foreground">{t("sales.status")}</span>
-          <select name="status" defaultValue={status} className={field}>
-            <option value="">{t("products.statusAll")}</option>
-            <option value="active">{t("products.statusActive")}</option>
-            <option value="inactive">{t("products.statusInactive")}</option>
-          </select>
-        </label>
-        <div className="flex gap-2">
-          <button type="submit" className="h-9 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground">
-            {t("sales.apply")}
-          </button>
-          <Link href="/admin/products" className={linkButton}>
-            {t("inventory.reset")}
-          </Link>
-        </div>
-      </form>
+      <ProductFilters q={filter.q} category={filter.category} status={filter.status} image={filter.image} categories={categories} />
 
       <div className="overflow-x-auto rounded-xl border bg-background">
         <table className="w-full min-w-[980px] text-sm">

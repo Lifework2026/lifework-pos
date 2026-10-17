@@ -310,7 +310,14 @@ export function ProductForm({ mode, categories, colors, sizes, storageReady, ini
           <CardTitle className="text-base">{t("products.photo")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <ProductImageField value={image} onChange={setImage} storageReady={storageReady} disabled={submitting} alt={name || t("products.photo")} />
+          <ProductImageField
+            value={image}
+            onChange={setImage}
+            storageReady={storageReady}
+            disabled={submitting}
+            alt={name || t("products.photo")}
+            productId={mode === "edit" ? (initial?.id ?? null) : null}
+          />
         </CardContent>
       </Card>
 

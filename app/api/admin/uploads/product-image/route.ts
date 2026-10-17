@@ -1,6 +1,6 @@
 import { apiError } from "@/lib/api";
 import { requireManager } from "@/lib/api-helpers";
-import { detectImageType, MAX_IMAGE_BYTES } from "@/lib/image-type";
+import { readImageUpload } from "@/lib/image-upload";
 import { getStorageConfig, StorageError, uploadProductImage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -24,23 +24,9 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return apiError(400, "INVALID_FORM", "Send the photo as multipart form data.");
-  }
-
-  const file = form.get("file");
-  if (!(file instanceof File)) return apiError(400, "FILE_REQUIRED", "Choose a photo to upload.");
-  if (file.size === 0) return apiError(400, "FILE_EMPTY", "The photo is empty.");
-  if (file.size > MAX_IMAGE_BYTES) {
-    return apiError(413, "FILE_TOO_LARGE", `The photo is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB.`);
-  }
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const image = detectImageType(bytes);
-  if (!image) return apiError(415, "UNSUPPORTED_TYPE", "Only JPEG, PNG and WebP photos are accepted.");
+  const upload = await readImageUpload(request);
+  if ("response" in upload) return upload.response;
+  const { bytes, image } = upload;
 
   try {
     const stored = await uploadProductImage(config, bytes, image);
