@@ -13,7 +13,8 @@
     "check:env": "node scripts/check-env.mjs",
     "catalog:sync": "tsx scripts/sync-catalog-matrix.ts",
     "photos:import": "tsx scripts/import-style-photos.ts",
-    "packing:import": "tsx scripts/import-packing-list.ts"
+    "packing:import": "tsx scripts/import-packing-list.ts",
+    "workbook:import": "tsx scripts/import-pos-workbook.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",

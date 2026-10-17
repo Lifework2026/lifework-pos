@@ -133,3 +133,51 @@ export function splitByPrice(table: string[][]): PriceSplit {
   }
   return { priced, unpriced, unpricedStyles: Array.from(styles) };
 }
+
+export type PriceKind = "sale" | "tag";
+
+export interface PriceEntry {
+  style: string;
+  kind: PriceKind;
+  /** Baht. */
+  price: number;
+  /** Where it was read, for messages. */
+  source: string;
+}
+
+export interface ResolvedPrices {
+  prices: Map<string, number>;
+  /** Styles whose price came from a sale price. */
+  sale: string[];
+  /** Styles whose sources disagree. They get no price, so nobody guesses. */
+  conflicts: { style: string; values: number[]; sources: string[] }[];
+}
+
+/**
+ * One price per style. A sale price wins over a tag price. Within the winning kind the sources must agree: if two
+ * sheets give different prices the style is left without one and reported, instead of picking either.
+ */
+export function resolveStylePrices(entries: PriceEntry[]): ResolvedPrices {
+  const byStyle = new Map<string, PriceEntry[]>();
+  for (const entry of entries) {
+    if (!(entry.price > 0)) continue;
+    const list = byStyle.get(entry.style) ?? [];
+    list.push(entry);
+    byStyle.set(entry.style, list);
+  }
+  const prices = new Map<string, number>();
+  const sale: string[] = [];
+  const conflicts: ResolvedPrices["conflicts"] = [];
+  for (const [style, list] of Array.from(byStyle.entries())) {
+    const sales = list.filter((e) => e.kind === "sale");
+    const chosen = sales.length > 0 ? sales : list;
+    const values = Array.from(new Set(chosen.map((e) => e.price)));
+    if (values.length > 1) {
+      conflicts.push({ style, values, sources: Array.from(new Set(chosen.map((e) => e.source))) });
+      continue;
+    }
+    prices.set(style, values[0]);
+    if (sales.length > 0) sale.push(style);
+  }
+  return { prices, sale, conflicts };
+}

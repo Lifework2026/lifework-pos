@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fillPricesByStyle, formatBaht, splitByPrice, splitTableByStyle } from "../lib/catalog/packing-import";
+import { fillPricesByStyle, formatBaht, resolveStylePrices, splitByPrice, splitTableByStyle, type PriceEntry } from "../lib/catalog/packing-import";
 
 let passed = 0;
 async function test(name: string, fn: () => void | Promise<void>): Promise<void> {
@@ -93,6 +93,45 @@ const row = (style: string, color: string, size: string, price = ""): string[] =
   await test("split: a file within the limit is one piece", () => {
     const rows = [row("LW262TS116", "11", "S", "1")];
     assert.deepEqual(splitTableByStyle([HEADER, ...rows], 2000), [[HEADER, ...rows]]);
+  });
+
+  const entry = (style: string, kind: "sale" | "tag", price: number, source = "a"): PriceEntry => ({ style, kind, price, source });
+
+  await test("resolve: a sale price wins over the tag price", () => {
+    const r = resolveStylePrices([entry("LW252KL481", "tag", 3000), entry("LW252KL481", "sale", 2700, "b")]);
+    assert.equal(r.prices.get("LW252KL481"), 2700);
+    assert.deepEqual(r.sale, ["LW252KL481"]);
+  });
+
+  await test("resolve: with no sale price the tag price is used, and the same price from two tabs is not a conflict", () => {
+    const r = resolveStylePrices([entry("LW262TS116", "tag", 1790), entry("LW262TS116", "tag", 1790, "b")]);
+    assert.equal(r.prices.get("LW262TS116"), 1790);
+    assert.deepEqual(r.conflicts, []);
+    assert.deepEqual(r.sale, []);
+  });
+
+  await test("resolve: two tabs with different tag prices leave the style unpriced and reported, never guessed", () => {
+    const r = resolveStylePrices([entry("LW262TS116", "tag", 1790, "tab 3"), entry("LW262TS116", "tag", 1990, "tab 1")]);
+    assert.equal(r.prices.has("LW262TS116"), false);
+    assert.deepEqual(r.conflicts, [{ style: "LW262TS116", values: [1790, 1990], sources: ["tab 3", "tab 1"] }]);
+  });
+
+  await test("resolve: two different sale prices are also a conflict, and a lone sale price still prices a style with no tag", () => {
+    assert.equal(resolveStylePrices([entry("A", "sale", 100), entry("A", "sale", 200)]).conflicts.length, 1);
+    assert.equal(resolveStylePrices([entry("LW245KS971", "sale", 1290)]).prices.get("LW245KS971"), 1290);
+  });
+
+  await test("resolve: zero and negative prices are ignored", () => {
+    assert.equal(resolveStylePrices([entry("A", "tag", 0), entry("B", "tag", -5)]).prices.size, 0);
+  });
+
+  await test("workbook script: one pass, preview first, sale price rule, update existing, photos only after the import commits", () => {
+    const script = readFileSync(path.join(__dirname, "..", "scripts", "import-pos-workbook.ts"), "utf8");
+    assert.ok(script.includes("if (!apply)") && script.indexOf("if (!apply)") < script.indexOf("commitImport(tx"));
+    assert.ok(script.includes('onExisting: "update"') && script.includes("applyStock: false"));
+    assert.ok(script.indexOf("commitImport(tx") < script.indexOf("replaceProductImage(db, store"), "photos upload after the import");
+    assert.ok(script.includes("resolveStylePrices") && script.includes("SALE PRICE (THAI, THB)"));
+    assert.ok(script.includes("replacePhotos"), "photos already on a product are kept unless asked");
   });
 
   await test("script: preview by default, one transaction, same checks as the admin page, and no stock written", () => {
