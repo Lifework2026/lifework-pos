@@ -1,7 +1,7 @@
 import { cellText } from "@/lib/text-columns";
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
-import { CODE_PATTERN, CODE_RULE_MESSAGE } from "@/lib/master-codes";
+import { CATEGORY_CODE_MESSAGE, CATEGORY_CODE_PATTERN, CODE_PATTERN, CODE_RULE_MESSAGE } from "@/lib/master-codes";
 import { slugify } from "@/lib/slug";
 
 /**
@@ -78,7 +78,7 @@ export function parseMasterTable(
     const problems: string[] = [];
     if (!code) problems.push(`${label}_Code is required.`);
     else if (code.startsWith(EXAMPLE_PREFIX)) problems.push("This is the example row from the template. Delete it, then upload again.");
-    else if (!CODE_PATTERN.test(code)) problems.push(`${label}_Code '${code}': ${CODE_RULE_MESSAGE}`);
+    else if (kind === "category" ? !CATEGORY_CODE_PATTERN.test(code) : !CODE_PATTERN.test(code)) problems.push(`${label}_Code '${code}': ${kind === "category" ? CATEGORY_CODE_MESSAGE : CODE_RULE_MESSAGE}`);
     if (name.startsWith("EXAMPLE ")) problems.push("This is the example row from the template. Delete it, then upload again.");
     else if (!name) problems.push(`${label}_Name is required.`);
     else if (name.length > LIMITS[kind].name) problems.push(`${label}_Name is longer than ${LIMITS[kind].name} characters.`);

@@ -19,7 +19,7 @@ async function test(name: string, fn: () => void | Promise<void>): Promise<void>
 }
 
 const MASTER: MasterData = {
-  categories: [{ code: "01", name: "Short-Sleeved T-Shirt", nameTh: "เสื้อยืดแขนสั้น" }],
+  categories: [{ code: "TS", name: "Short T-Shirts", nameTh: null }],
   colors: [{ code: "BK", name: "Black", nameTh: "ดำ" }],
 };
 
@@ -88,16 +88,16 @@ async function parseWorkbook(rows: (string | number)[][]) {
     assert.deepEqual(issues.map((i) => i.line), [2, 3]);
   });
 
-  await test("template D: codes such as 01 are kept, lower case is upper-cased, and a single digit is refused", () => {
+  await test("template D: codes such as TS are kept, lower case is upper-cased, and a number such as 01 is refused", () => {
     const ok = parseMasterTable(
       [
         ["Category_Code", "Category_Name"],
-        ["01", "Short-Sleeved T-Shirt"],
-        ["02", "Long-Sleeved T-Shirt"],
+        ["TS", "Short T-Shirts"],
+        ["BG", "BAG"],
       ],
       "category",
     );
-    assert.deepEqual(ok.rows.map((r) => r.code), ["01", "02"]);
+    assert.deepEqual(ok.rows.map((r) => r.code), ["TS", "BG"]);
     assert.equal(ok.issues.length, 0);
 
     const bad = parseMasterTable([["Category_Code", "Category_Name"], ["1", "Single digit"]], "category");
@@ -111,23 +111,23 @@ async function parseWorkbook(rows: (string | number)[][]) {
   });
 
   await test("example rows are refused by name, so the sample codes 01 and BK cannot create anything", () => {
-    const d = parseMasterTable([["Category_Code", "Category_Name"], ["01", "EXAMPLE Short-Sleeved T-Shirt"]], "category");
+    const d = parseMasterTable([["Category_Code", "Category_Name"], ["TS", "EXAMPLE Short T-Shirts"]], "category");
     assert.ok(d.issues.some((i) => i.line === 2 && /example row/.test(i.message)));
     const e = parseMasterTable([["Color_Code", "Color_Name"], ["BK", "EXAMPLE Black"]], "color");
     assert.ok(e.issues.some((i) => i.line === 2 && /example row/.test(i.message)));
     // A real name that starts with Example is not a sample.
-    const real = parseMasterTable([["Category_Code", "Category_Name"], ["03", "Example Wear"]], "category");
+    const real = parseMasterTable([["Category_Code", "Category_Name"], ["BG", "Example Wear"]], "category");
     assert.equal(real.issues.length, 0);
   });
 
   await test("template A: Category_Code 01 and colour bk come through as text and upper case", () => {
     const table = [
       TEMPLATE_HEADER,
-      ["LW265TS0100M", "LW-TEE-01-M", "เสื้อยืด", "Tee", " 01 ", "bk", "M", "390", "180", "10", ""],
+      ["LW265TS0100M", "LW-TEE-01-M", "เสื้อยืด", "Tee", " ts ", "bk", "M", "390", "180", "10", ""],
     ];
     const parsed = parseImportTable(table);
     assert.deepEqual(parsed.issues, []);
-    assert.equal(parsed.rows[0].categoryCode, "01");
+    assert.equal(parsed.rows[0].categoryCode, "TS");
     assert.equal(parsed.rows[0].colorCode, "BK");
   });
 
@@ -150,16 +150,16 @@ async function parseWorkbook(rows: (string | number)[][]) {
       if (type === "A") {
         const codes = workbook.getWorksheet("Master_Data_Codes");
         assert.equal(codes.getCell(2, 2).numFmt, "@", "Master_Data_Codes code column is Text");
-        assert.equal(codes.getCell(2, 2).value, "01");
+        assert.equal(codes.getCell(2, 2).value, "TS");
       }
     }
   });
 
   await test("template A example uses the live category and colour codes, not the old CAT- and COL- samples", () => {
     const example = TEMPLATES.A.example(MASTER);
-    assert.equal(example[4], "01");
+    assert.equal(example[4], "TS");
     assert.equal(example[5], "BK");
-    assert.equal(TEMPLATES.D.example(MASTER)[0], "00");
+    assert.equal(TEMPLATES.D.example(MASTER)[0], "TS");
     assert.equal(TEMPLATES.E.example(MASTER)[0], "00");
   });
 

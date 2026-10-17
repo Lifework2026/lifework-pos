@@ -3,12 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
 import { readBody, requireManager } from "@/lib/api-helpers";
 import { slugify } from "@/lib/slug";
-import { catalogCodeSchema } from "@/lib/master-schema";
+import { categoryCodeSchema } from "@/lib/master-schema";
 
 export const dynamic = "force-dynamic";
 
 const createSchema = z.object({
-  code: catalogCodeSchema,
+  code: categoryCodeSchema,
   name: z.string().trim().min(1, "Enter a category name.").max(80),
   nameTh: z.string().trim().max(80).nullable().optional(),
 });

@@ -16,6 +16,7 @@ import { TEMPLATE_HEADER } from "@/lib/catalog/import";
 import { CATEGORY_TEMPLATE_HEADER, COLOR_TEMPLATE_HEADER, MAX_MASTER_ROWS } from "@/lib/catalog/master-import";
 import { MEMBER_TEMPLATE_HEADER, MAX_MEMBER_ROWS } from "@/lib/members/import";
 import { prisma } from "@/lib/prisma";
+import { MATRIX_CATEGORIES } from "@/lib/catalog-matrix";
 import { TEXT_COLUMNS } from "@/lib/text-columns";
 
 export type TemplateType = "A" | "B" | "C" | "D" | "E" | "F";
@@ -26,7 +27,7 @@ export const NEW_PRODUCT_HEADER = TEMPLATE_HEADER;
 const TEXT_LAST_ROW = 2001;
 
 const TEXT_NOTE =
-  "Barcode, SKU, Category_Code, Color_Code and Phone_Number are text. Keep their format as Text and type 01, not 1, so leading zeros are kept.";
+  "Barcode, SKU, Category_Code, Color_Code and Phone_Number are text. Keep their format as Text and type 00 for a colour, not 0, so leading zeros are kept.";
 
 /** The master data a template lists, read from the database. */
 export interface MasterData {
@@ -63,7 +64,7 @@ export const TEMPLATES: Record<TemplateType, TemplateSpec> = {
       "EXAMPLE-TEE-M",
       "เสื้อยืดตัวอย่าง",
       "Example Tee",
-      master.categories[0]?.code ?? "00",
+      master.categories[0]?.code ?? "TS",
       master.colors[0]?.code ?? "00",
       "M",
       "390",
@@ -74,7 +75,7 @@ export const TEMPLATES: Record<TemplateType, TemplateSpec> = {
     widths: [18, 18, 22, 22, 16, 14, 8, 10, 10, 14, 14],
     instructions: [
       "Use this template to create products that are not in the system yet. One row per size and colour.",
-      "Category_Code (required): the code of an existing category, copied exactly from the Master_Data_Codes sheet, for example 00. Categories are not created by this import.",
+      "Category_Code (required): the code of an existing category, copied exactly from the Master_Data_Codes sheet, for example TS. It is two capital letters from the official dictionary. Categories are not created by this import.",
       "Color_Code (required): the code of an existing colour, copied exactly from the Master_Data_Codes sheet, for example 00. Colours are not created by this import.",
       "A code that is not in the master data is refused with a message naming the code. Fix the code or add the category or colour first, then import again.",
       "Barcode: the code printed on the item or label. Letters, digits and - . / _ only, 4 to 40 characters. Leave blank to have the system create one.",
@@ -127,11 +128,11 @@ export const TEMPLATES: Record<TemplateType, TemplateSpec> = {
     title: "D. Categories",
     file: "lifework-template-D-categories.xlsx",
     header: CATEGORY_TEMPLATE_HEADER,
-    example: () => ["00", "EXAMPLE Short-Sleeved T-Shirt"],
+    example: () => ["TS", "EXAMPLE Short T-Shirts"],
     widths: [18, 30],
     instructions: [
       "Use this template to create categories and rename them in bulk. Rows are matched by Category_Code.",
-      "Category_Code (key): 2 to 20 letters or digits, upper case, for example 00 for Short-Sleeved T-Shirt. It is unique and cannot be shared.",
+      "Category_Code (key): exactly 2 capital letters from the official dictionary, for example TS for Short T-Shirts or BG for BAG (see Master_Data_Codes). It is unique and cannot be shared.",
       "Category_Name: the category name in English. If the code already exists, its name is updated. If not, a new category is created.",
       "A name that another category already uses is refused, so two codes never share a name.",
       "Products keep their category when a category is renamed. Categories are never deleted by this import.",
@@ -242,6 +243,9 @@ export async function buildTemplateWorkbook(type: TemplateType, master?: MasterD
     }
     for (const color of masterData.colors) {
       codes.addRow({ type: "Color", code: color.code, name: color.name, nameTh: color.nameTh ?? "" });
+    }
+    for (const entry of MATRIX_CATEGORIES) {
+      codes.addRow({ type: "Dictionary", code: entry.code, name: entry.name, nameTh: "" });
     }
     if (masterData.categories.length === 0 && masterData.colors.length === 0) {
       codes.addRow({ type: "", code: "", name: "No categories or colours yet. Add them in Back-Office first.", nameTh: "" });

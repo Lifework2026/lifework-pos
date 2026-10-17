@@ -39,14 +39,14 @@ function fakeTx(snapshot: {
     const ok = parseMasterTable(
       [
         ["Category_Code", "Category_Name"],
-        ["cat-bags", "Bags"],
-        ["CAT-HATS", "Hats"],
+        ["bg", "Bags"],
+        ["CP", "Caps"],
       ],
       "category",
     );
     assert.deepEqual(
       ok.rows.map((r) => r.code),
-      ["CAT-BAGS", "CAT-HATS"],
+      ["BG", "CP"],
     );
     assert.equal(ok.issues.length, 0);
 
@@ -54,8 +54,8 @@ function fakeTx(snapshot: {
       [
         ["Category_Code", "Category_Name"],
         ["A", "Too short"],
-        ["CAT-BAGS", "Bags"],
-        ["CAT-BAGS", "Bags again"],
+        ["BG", "Bags"],
+        ["BG", "Bags again"],
         ["EXAMPLE-CAT", "EXAMPLE CATEGORY"],
       ],
       "category",

@@ -22,34 +22,29 @@ const legacyColors = [
 ];
 
 (async () => {
-  await test("categories: an exact legacy name is renamed to its matrix code, keeping the same row", () => {
-    const plan = planMatrixSync(legacyCategories, []);
-    assert.deepEqual(
-      plan.renameCategories.map((r) => [r.id, r.from, r.to]),
-      [
-        ["c-pants", "CAT-PANT", "05"],
-        ["c-sup", "CAT-SUP", "SP"],
-      ],
-    );
+  await test("categories: an exact legacy name is renamed to its dictionary code, keeping the same row", () => {
+    const plan = planMatrixSync([{ id: "c-ts", code: "CAT-TS", name: "Short T-Shirts", slug: "short-t-shirts" }], []);
+    assert.deepEqual(plan.renameCategories.map((r) => [r.id, r.from, r.to]), [["c-ts", "CAT-TS", "TS"]]);
+    assert.equal(planMatrixSync(legacyCategories, []).renameCategories.length, 0, "Pants and Supplies are not in the dictionary");
   });
 
   await test("categories: names that differ are not renamed, and the matrix entry is created instead", () => {
     const plan = planMatrixSync(legacyCategories, []);
     // "Shirts" is not "Shirt", so the legacy row is left alone and 02 Shirt is created.
-    assert.ok(plan.createCategories.some((c) => c.code === "02"));
+    assert.ok(plan.createCategories.some((c) => c.code === "SR"));
     assert.ok(!plan.renameCategories.some((r) => r.id === "c-shirts"));
   });
 
   await test("categories: a matrix code that already exists is left unchanged", () => {
-    const plan = planMatrixSync([{ id: "x", code: "00", name: "Short-Sleeved T-Shirt", slug: "short-sleeved-t-shirt" }], []);
-    assert.ok(plan.unchanged.includes("category 00"));
-    assert.ok(!plan.createCategories.some((c) => c.code === "00"));
+    const plan = planMatrixSync([{ id: "x", code: "TS", name: "Short T-Shirts", slug: "short-t-shirts" }], []);
+    assert.ok(plan.unchanged.includes("category TS"));
+    assert.ok(!plan.createCategories.some((c) => c.code === "TS"));
   });
 
   await test("categories: a slug held by an unrelated row is reported as a conflict, not overwritten", () => {
     const plan = planMatrixSync([{ id: "h", code: "CAT-HAT", name: "Hats", slug: "shirt" }], []);
-    assert.ok(plan.conflicts.some((m) => /category 02 .*slug shirt/.test(m)));
-    assert.ok(!plan.createCategories.some((c) => c.code === "02"));
+    assert.ok(plan.conflicts.some((m) => /category SR .*slug shirt/.test(m)));
+    assert.ok(!plan.createCategories.some((c) => c.code === "SR"));
   });
 
   await test("colours: the legacy White becomes 00, and rows that are not in the list are left alone", () => {

@@ -113,7 +113,7 @@ test("master-data codes: colour routes are manager-only and categories require a
     assert.ok(read(file).includes("await requireManager()"), file + " must require a manager");
   }
   const createSchema = read("app/api/admin/categories/route.ts");
-  assert.ok(createSchema.includes("code: catalogCodeSchema"), "a category needs a code");
+  assert.ok(createSchema.includes("code: categoryCodeSchema"), "a category needs a code");
   assert.ok(read("lib/master-schema.ts").includes("isValidCode"), "codes are checked with the shared rule");
 });
 

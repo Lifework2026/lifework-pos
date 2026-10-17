@@ -2,12 +2,12 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { apiError } from "@/lib/api";
 import { readBody, requireManager } from "@/lib/api-helpers";
-import { catalogCodeSchema } from "@/lib/master-schema";
+import { CATEGORY_CODE_MESSAGE, isValidCategoryCode, normalizeCode } from "@/lib/master-codes";
 
 export const dynamic = "force-dynamic";
 
 const patchSchema = z.object({
-  code: catalogCodeSchema.optional(),
+  code: z.string().transform(normalizeCode).optional(),
   name: z.string().trim().min(1, "Enter a category name.").max(80).optional(),
   nameTh: z.string().trim().max(80).nullable().optional(),
 });
@@ -19,8 +19,12 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   const body = await readBody(request, patchSchema);
   if ("response" in body) return body.response;
 
-  const existing = await prisma.category.findUnique({ where: { id: params.id }, select: { id: true } });
+  const existing = await prisma.category.findUnique({ where: { id: params.id }, select: { id: true, code: true } });
   if (!existing) return apiError(404, "NOT_FOUND", "Category not found.");
+  // A legacy code can stay while the name changes. A changed code must follow the dictionary.
+  if (body.data.code !== undefined && body.data.code !== existing.code && !isValidCategoryCode(body.data.code)) {
+    return apiError(400, "INVALID_CODE", CATEGORY_CODE_MESSAGE);
+  }
 
   if (body.data.code) {
     const sameCode = await prisma.category.findFirst({ where: { code: body.data.code, NOT: { id: params.id } }, select: { id: true } });

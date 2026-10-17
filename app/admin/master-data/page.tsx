@@ -3,7 +3,7 @@ import { ActionBar } from "@/components/admin/action-bar";
 import { ClearDemoPanel } from "@/components/admin/clear-demo-panel";
 import { prisma } from "@/lib/prisma";
 import { getServerLocale, serverT } from "@/lib/i18n/server";
-import { isLegacyDemoCode, planDemoClear } from "@/lib/master-demo";
+import { isLegacyCategoryCode, isLegacyColorCode, planDemoClear } from "@/lib/master-demo";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +29,8 @@ export default async function MasterDataPage() {
 
   const categoryUses = categories.map((c) => ({ id: c.code, code: c.code, uses: c._count.products + c._count.promotions }));
   const colorUses = colors.map((c) => ({ id: c.code, code: c.code, uses: c._count.variants }));
-  const categoryPlan = planDemoClear(categoryUses);
-  const colorPlan = planDemoClear(colorUses);
+  const categoryPlan = planDemoClear(categoryUses, isLegacyCategoryCode);
+  const colorPlan = planDemoClear(colorUses, isLegacyColorCode);
   const ready = categories.length > 0 && colors.length > 0;
 
   const panel = "rounded-xl border bg-card";
@@ -109,7 +109,7 @@ export default async function MasterDataPage() {
                         <span className="inline-flex min-w-12 items-center justify-center rounded-md border-2 border-primary/40 bg-primary/10 px-3 py-1 font-mono text-lg font-bold tracking-wider">
                           {row.code}
                         </span>
-                        {isLegacyDemoCode(row.code) ? (
+                        {isLegacyCategoryCode(row.code) ? (
                           <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                             {t("master.demoBadge")}
                           </span>
@@ -168,7 +168,7 @@ export default async function MasterDataPage() {
                       <span className="inline-flex min-w-12 items-center justify-center rounded-md border-2 border-primary/40 bg-primary/10 px-3 py-1 font-mono text-lg font-bold tracking-wider">
                         {row.code}
                       </span>
-                      {isLegacyDemoCode(row.code) ? (
+                      {isLegacyColorCode(row.code) ? (
                         <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                           {t("master.demoBadge")}
                         </span>

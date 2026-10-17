@@ -19,7 +19,7 @@ async function test(name: string, fn: () => void | Promise<void>): Promise<void>
 
 const MASTER: MasterData = {
   categories: [
-    { code: "CAT-SHIRT", name: "Shirts", nameTh: "เสื้อ" },
+    { code: "SR", name: "Shirts", nameTh: "เสื้อ" },
     { code: "CAT-PANT", name: "Pants", nameTh: "กางเกง" },
   ],
   colors: [
@@ -42,7 +42,7 @@ function fakeDb(): Parameters<typeof planImport>[0] {
     productVariant: { findMany: empty },
     product: { findMany: empty },
     size: { findMany: empty },
-    category: { findMany: async () => [{ id: "cat-shirt", code: "CAT-SHIRT", name: "Shirts" }] },
+    category: { findMany: async () => [{ id: "cat-shirt", code: "SR", name: "Shirts" }] },
     color: { findMany: async () => [{ id: "col-blk", code: "COL-BLK", name: "Black" }] },
   } as unknown as Parameters<typeof planImport>[0];
 }
@@ -54,7 +54,7 @@ function row(overrides: Partial<ImportRow>): ImportRow {
     sku: "LW-1",
     name: "Tee",
     nameTh: null,
-    categoryCode: "CAT-SHIRT",
+    categoryCode: "SR",
     colorCode: "COL-BLK",
     size: "M",
     priceSatang: 39_000,
@@ -77,7 +77,7 @@ function row(overrides: Partial<ImportRow>): ImportRow {
     const example = data.getRow(2).values.slice(1);
     assert.equal(example.length, TEMPLATE_HEADER.length);
     assert.equal(example[0], "EXAMPLE-0000001");
-    assert.equal(example[TEMPLATE_HEADER.indexOf("Category_Code")], "CAT-SHIRT", "example uses a live category code");
+    assert.equal(example[TEMPLATE_HEADER.indexOf("Category_Code")], "SR", "example uses a live category code");
     assert.equal(example[TEMPLATE_HEADER.indexOf("Color_Code")], "COL-BLK", "example uses a live colour code");
   });
 
@@ -89,9 +89,10 @@ function row(overrides: Partial<ImportRow>): ImportRow {
     codes.eachRow((r: { values: unknown[] }, index: number) => {
       if (index > 1) rows.push(r.values.slice(1));
     });
-    assert.deepEqual(rows[0], ["Category", "CAT-SHIRT", "Shirts", "เสื้อ"]);
+    assert.deepEqual(rows[0], ["Category", "SR", "Shirts", "เสื้อ"]);
     assert.ok(rows.some((r) => r[0] === "Color" && r[1] === "COL-BLK"));
-    assert.equal(rows.length, MASTER.categories.length + MASTER.colors.length);
+    assert.equal(rows.length, MASTER.categories.length + MASTER.colors.length + 39, "live rows, then the 39-code dictionary");
+    assert.ok(rows.some((r) => r[0] === "Dictionary" && r[1] === "TS"), "the official dictionary is listed");
   });
 
   await test("template B and C: headers match the importers, and row 2 is an example", async () => {
@@ -115,7 +116,7 @@ function row(overrides: Partial<ImportRow>): ImportRow {
 
   // ------------------------------------------------------------ sample guard
   await test("the example row is refused by every importer, so an unedited template cannot change stock", () => {
-    const a = parseImportTable([TEMPLATE_HEADER, ["EXAMPLE-0000001", "EXAMPLE-TEE-M", "", "Example Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "180", "10", "HOT"]]);
+    const a = parseImportTable([TEMPLATE_HEADER, ["EXAMPLE-0000001", "EXAMPLE-TEE-M", "", "Example Tee", "SR", "COL-BLK", "M", "390", "180", "10", "HOT"]]);
     assert.ok(a.issues.some((i) => /example row/.test(i.message)));
     assert.equal(a.rows.length, 0);
     const b = parsePriceTable([["Barcode", "New_Price", "Promo_Tag"], ["EXAMPLE-0000001", "350", "SALE"]]);
@@ -128,12 +129,12 @@ function row(overrides: Partial<ImportRow>): ImportRow {
   await test("template A reads the cost and promo tag and resolves codes to their master record", () => {
     const result = parseImportTable([
       TEMPLATE_HEADER,
-      ["LW265TS99035XL", "LW-TEE-M", "เสื้อยืด", "Cotton Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "180.50", "10", "HOT"],
+      ["LW265TS99035XL", "LW-TEE-M", "เสื้อยืด", "Cotton Tee", "SR", "COL-BLK", "M", "390", "180.50", "10", "HOT"],
     ]);
     assert.equal(result.issues.length, 0, JSON.stringify(result.issues));
     const r = result.rows[0];
     assert.equal(r.name, "Cotton Tee");
-    assert.equal(r.categoryCode, "CAT-SHIRT");
+    assert.equal(r.categoryCode, "SR");
     assert.equal(r.colorCode, "COL-BLK");
     assert.equal(r.costSatang, 18050);
     assert.equal(r.promoTag, "HOT");
@@ -143,7 +144,7 @@ function row(overrides: Partial<ImportRow>): ImportRow {
   await test("template A rejects a bad cost and an over-long promo tag", () => {
     const result = parseImportTable([
       ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price", "Cost", "Promo_Tag"],
-      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "1.234", "X".repeat(31)],
+      ["LW-1", "Tee", "SR", "COL-BLK", "M", "390", "1.234", "X".repeat(31)],
     ]);
     assert.ok(result.issues.some((i) => /Cost/.test(i.message)));
     assert.ok(result.issues.some((i) => /Promo_Tag/.test(i.message)));

@@ -18,7 +18,7 @@ import { BARCODE_RULE_MESSAGE, isValidBarcode } from "@/lib/barcode-rules";
 import { bahtToSatang, PricingError, satangToDecimal } from "@/lib/pricing";
 import { slugify } from "@/lib/slug";
 import { ensureSizes } from "@/lib/catalog/sizes";
-import { CODE_PATTERN, CODE_RULE_MESSAGE } from "@/lib/master-codes";
+import { CATEGORY_CODE_MESSAGE, CATEGORY_CODE_PATTERN, CODE_PATTERN, CODE_RULE_MESSAGE } from "@/lib/master-codes";
 
 export const MAX_IMPORT_ROWS = 2000;
 
@@ -188,7 +188,7 @@ export function parseImportTable(table: string[][]): ParsedImport {
 
     const categoryCode = get("categoryCode").toUpperCase();
     if (!categoryCode) problems.push("Category_Code is required.");
-    else if (!CODE_PATTERN.test(categoryCode)) problems.push(`Category_Code '${categoryCode}': ${CODE_RULE_MESSAGE}`);
+    else if (!CATEGORY_CODE_PATTERN.test(categoryCode)) problems.push(`Category_Code '${categoryCode}': ${CATEGORY_CODE_MESSAGE}`);
 
     const colorCode = get("colorCode").toUpperCase();
     if (!colorCode) problems.push("Color_Code is required.");

@@ -86,11 +86,11 @@ const header = ["SKU", "Name", "Category", "Size", "Price", "Stock"];
 
   // ---------------- Import validation (Template A, keyed by master-data codes)
   await test("import: the downloadable template header parses cleanly with an example row", () => {
-    const example = ["LW265TS99035XL", "LW-TEE-M", "เสื้อยืด", "Cotton Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "180", "10", "HOT"];
+    const example = ["LW265TS99035XL", "LW-TEE-M", "เสื้อยืด", "Cotton Tee", "SR", "COL-BLK", "M", "390", "180", "10", "HOT"];
     const result = parseImportTable([TEMPLATE_HEADER, example]);
     assert.equal(result.issues.length, 0, JSON.stringify(result.issues));
     assert.equal(result.rows[0].priceSatang, 39_000);
-    assert.equal(result.rows[0].categoryCode, "CAT-SHIRT");
+    assert.equal(result.rows[0].categoryCode, "SR");
     assert.equal(result.rows[0].colorCode, "COL-BLK");
     assert.equal(result.rows[0].costSatang, 18_000);
     assert.equal(result.rows[0].promoTag, "HOT");
@@ -106,7 +106,7 @@ const header = ["SKU", "Name", "Category", "Size", "Price", "Stock"];
     const result = parseImportTable([
       ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"],
       ["LW-1", "Tee", "", "COL-BLK", "M", "390"],
-      ["LW-2", "Tee", "CAT-SHIRT", "", "L", "390"],
+      ["LW-2", "Tee", "SR", "", "L", "390"],
     ]);
     assert.ok(result.issues.some((i) => i.line === 2 && /Category_Code is required/.test(i.message)));
     assert.ok(result.issues.some((i) => i.line === 3 && /Color_Code is required/.test(i.message)));
@@ -115,10 +115,10 @@ const header = ["SKU", "Name", "Category", "Size", "Price", "Stock"];
   await test("import: codes are accepted in lower case and stored in upper case", () => {
     const result = parseImportTable([
       ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"],
-      ["LW-1", "Tee", "cat-shirt", "col-blk", "M", "390"],
+      ["LW-1", "Tee", "sr", "col-blk", "M", "390"],
     ]);
     assert.equal(result.issues.length, 0, JSON.stringify(result.issues));
-    assert.equal(result.rows[0].categoryCode, "CAT-SHIRT");
+    assert.equal(result.rows[0].categoryCode, "SR");
     assert.equal(result.rows[0].colorCode, "COL-BLK");
   });
 
@@ -133,8 +133,8 @@ const header = ["SKU", "Name", "Category", "Size", "Price", "Stock"];
   await test("import: the same product must not be listed under two categories", () => {
     const result = parseImportTable([
       ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"],
-      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "M", "390"],
-      ["LW-2", "Tee", "CAT-PANT", "COL-BLK", "L", "390"],
+      ["LW-1", "Tee", "SR", "COL-BLK", "M", "390"],
+      ["LW-2", "Tee", "WL", "COL-BLK", "L", "390"],
     ]);
     assert.ok(result.issues.some((i) => i.line === 3 && /Use one category/.test(i.message)));
   });
@@ -142,16 +142,16 @@ const header = ["SKU", "Name", "Category", "Size", "Price", "Stock"];
   await test("import: duplicate SKUs and barcodes inside the file are caught", () => {
     const result = parseImportTable([
       ["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price", "Barcode"],
-      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "M", "390", "LW265TS99035XL"],
-      ["LW-1", "Tee", "CAT-SHIRT", "COL-BLK", "L", "390", "LW265TS99035XM"],
-      ["LW-3", "Tee", "CAT-SHIRT", "COL-BLK", "S", "390", "LW265TS99035XL"],
+      ["LW-1", "Tee", "SR", "COL-BLK", "M", "390", "LW265TS99035XL"],
+      ["LW-1", "Tee", "SR", "COL-BLK", "L", "390", "LW265TS99035XM"],
+      ["LW-3", "Tee", "SR", "COL-BLK", "S", "390", "LW265TS99035XL"],
     ]);
     assert.ok(result.issues.some((i) => i.line === 3 && /SKU LW-1 is already on line 2/.test(i.message)));
     assert.ok(result.issues.some((i) => i.line === 4 && /already appears on line 2/.test(i.message)));
   });
 
   await test("import: the row limit is enforced", () => {
-    const rows = Array.from({ length: 2001 }, (_, i) => [`S-${i}`, `P${i}`, "CAT-SHIRT", "COL-BLK", "M", "10"]);
+    const rows = Array.from({ length: 2001 }, (_, i) => [`S-${i}`, `P${i}`, "SR", "COL-BLK", "M", "10"]);
     const result = parseImportTable([["SKU", "Name_EN", "Category_Code", "Color_Code", "Size", "Price"], ...rows]);
     assert.equal(result.rows.length, 0);
     assert.match(result.issues[0].message, /limit is 2000/);

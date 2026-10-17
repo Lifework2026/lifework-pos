@@ -42,7 +42,7 @@ const DEMO_CATALOG = [
   {
     name: "Shirts",
     slug: "shirts",
-    code: "SH",
+    code: "SR",
     products: [
       {
         name: "Classic Oxford Shirt",
@@ -74,7 +74,7 @@ const DEMO_CATALOG = [
   {
     name: "Pants",
     slug: "pants",
-    code: "PN",
+    code: "WL",
     products: [
       {
         name: "Slim Chino Pants",
@@ -177,9 +177,9 @@ async function ensureStandardColor() {
 
 async function seedBags(): Promise<void> {
   const category = await prisma.category.upsert({
-    where: { slug: "supplies" },
+    where: { code: "BG" },
     update: {},
-    create: { name: "Supplies", slug: "supplies", code: "SP" },
+    create: { name: "BAG", slug: "bag", code: "BG" },
   });
   await fillThaiNames();
   const product = await prisma.product.upsert({
@@ -275,7 +275,7 @@ async function seedDemoCatalog(): Promise<number> {
   return created;
 }
 
-/** Starting Catalog IDs from the SKU matrix (00 Short-Sleeved T-Shirt, SP Supplies). Created once; add more in Back-Office > Master data. */
+/** Starting Catalog IDs from the SKU matrix (TS Short T-Shirts, BG BAG). Created once; add more in Back-Office > Master data. */
 const DEFAULT_CATEGORIES = MATRIX_CATEGORIES.map((c) => ({ name: c.name, nameTh: c.nameTh, slug: c.slug, code: c.code }));
 
 async function seedDefaultCategories(): Promise<void> {

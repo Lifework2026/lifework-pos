@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { apiError } from "@/lib/api";
 import { requireManager } from "@/lib/api-helpers";
 import { prisma } from "@/lib/prisma";
-import { CLEAR_DEMO_PHRASE, planDemoClear } from "@/lib/master-demo";
+import { CLEAR_DEMO_PHRASE, isLegacyCategoryCode, isLegacyColorCode, planDemoClear } from "@/lib/master-demo";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +39,9 @@ export async function POST(request: Request): Promise<Response> {
         ]);
         const categoryPlan = planDemoClear(
           categories.map((c) => ({ id: c.id, code: c.code, uses: c._count.products + c._count.promotions })),
+          isLegacyCategoryCode,
         );
-        const colorPlan = planDemoClear(colors.map((c) => ({ id: c.id, code: c.code, uses: c._count.variants })));
+        const colorPlan = planDemoClear(colors.map((c) => ({ id: c.id, code: c.code, uses: c._count.variants })), isLegacyColorCode);
 
         // The where clause repeats the usage check, so a row that gained a user since the read is kept.
         const removedCategories = categoryPlan.remove.length
