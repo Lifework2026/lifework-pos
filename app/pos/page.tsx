@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, LayoutDashboard, UserRound } from "lucide-react";
 import { CartPanel } from "@/components/pos/cart-panel";
@@ -17,6 +17,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import type { HeldBillSummary, ResumedBill } from "@/lib/held-bills";
 import { requestJson } from "@/lib/http";
+import { focusBarcodeField } from "@/lib/pos-focus";
 import type { ScanDecision } from "@/lib/scanner-input";
 import { useI18n } from "@/lib/i18n/client";
 import type { ApiErrorBody, OrderDetails, VariantSummary } from "@/lib/pos-types";
@@ -125,6 +126,22 @@ export default function PosPage() {
 
   // The barcode field takes input only while no dialog is open and a shift is running.
   const scannerEnabled = !checkoutOpen && !heldOpen && shiftOpen;
+
+  // When the payment or held-bills window closes, the cursor goes back to the barcode field. The browser would otherwise
+  // hand focus back to the button that opened the window (the pay button, which is disabled once the sale is done), and
+  // the next scan would land nowhere.
+  const dialogWasOpen = useRef(false);
+  const dialogOpen = checkoutOpen || heldOpen;
+  useEffect(() => {
+    if (dialogOpen) {
+      dialogWasOpen.current = true;
+      return;
+    }
+    if (!dialogWasOpen.current) return;
+    dialogWasOpen.current = false;
+    const timer = window.setTimeout(focusBarcodeField, 120);
+    return () => window.clearTimeout(timer);
+  }, [dialogOpen]);
 
   async function holdCurrentBill(): Promise<void> {
     const { items, discount, getTotal } = useCartStore.getState();

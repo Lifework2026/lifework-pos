@@ -41,7 +41,7 @@ export function CartPanel({ onCheckout, onHold, onOpenHeld, heldCount, holding }
 
   return (
     <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
-      <header className="flex flex-col gap-2.5 border-b px-4 py-3">
+      <header className="flex flex-col gap-2.5 border-b px-4 py-3" onClickCapture={focusBarcodeField}>
         <div className="flex items-center justify-between gap-2">
           <h2 className="flex items-center gap-2 text-[14px] font-extrabold">
             <ShoppingCart className="size-[18px]" />

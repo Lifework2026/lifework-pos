@@ -136,6 +136,23 @@ const read = (rel: string) => readFileSync(path.join(__dirname, "..", rel), "utf
     assert.ok(read("lib/pos-focus.ts").includes("pos-barcode-input"));
   });
 
+  await test("lost focus: the scanner field takes focus back by itself, also after Clear, a removed line, or a closed payment window", () => {
+    const hook = read("hooks/useScannerInput.ts");
+    assert.ok(hook.includes("window.setInterval(focusIfIdle") && hook.includes("window.clearInterval(timer)"), "a safety net for focus dropped without an event");
+    assert.ok(hook.includes("if (active && active !== document.body) return;"), "it never takes focus from a field or dialog that has it");
+    const cart = read("components/pos/cart-panel.tsx");
+    assert.equal((cart.match(/onClickCapture=\{focusBarcodeField\}/g) ?? []).length, 2, "the cart header (Clear, Hold) and the cart lines");
+    const page = read("app/pos/page.tsx");
+    assert.ok(page.includes("dialogWasOpen") && page.includes("window.setTimeout(focusBarcodeField"), "after the payment or held-bills window closes");
+  });
+
+  await test("search and strip: a typed search ignores the category, and the category strip has an arrow for each direction", () => {
+    const panel = read("components/pos/product-panel.tsx");
+    assert.ok(panel.includes('if (query.trim() !== "") setCategoryId(null)'));
+    assert.ok(panel.includes('side="left"') && panel.includes('side="right"') && panel.includes("arrows.left") && panel.includes("arrows.right") && panel.includes("onScroll={updateStripArrows}"));
+    for (const locale of LOCALES) assert.ok(MESSAGES[locale]["pos.categoriesPrev"]);
+  });
+
   await test("checkout: four quick-cash buttons in fixed places, change shown large at once, Enter completes the sale", () => {
     const dialog = read("components/pos/checkout-dialog.tsx");
     assert.ok(dialog.includes("grid-cols-4") && dialog.includes("[amountSatang, ...BILL_DENOMINATIONS.map((b) => b * 100)]"));

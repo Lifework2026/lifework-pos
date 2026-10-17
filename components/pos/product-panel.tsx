@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronRight, Package, Radio, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Package, Radio, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StyleCard } from "@/components/pos/style-card";
@@ -70,6 +70,25 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
   // Recent results, so a repeated search or category shows at once while a fresh copy loads in the background.
   const cacheRef = useRef(new Map<string, StyleSummary[]>());
   const stripRef = useRef<HTMLDivElement>(null);
+  /** Which way the category strip can still be moved, so each arrow only shows when it has somewhere to go. */
+  const [arrows, setArrows] = useState({ left: false, right: false });
+  function updateStripArrows(): void {
+    const strip = stripRef.current;
+    if (!strip) return;
+    const left = strip.scrollLeft > 4;
+    const right = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 4;
+    setArrows((current) => (current.left === left && current.right === right ? current : { left, right }));
+  }
+  useEffect(() => {
+    updateStripArrows();
+    window.addEventListener("resize", updateStripArrows);
+    return () => window.removeEventListener("resize", updateStripArrows);
+  }, [categories]);
+
+  // Searching looks in every category: a category chosen earlier would otherwise hide the style being searched for.
+  useEffect(() => {
+    if (query.trim() !== "") setCategoryId(null);
+  }, [query]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -150,11 +169,12 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
           ref={stripRef}
           role="group"
           aria-label={t("pos.products")}
+          onScroll={updateStripArrows}
           onWheel={(event) => {
             // A mouse wheel moves the strip sideways, since it has nothing to scroll up or down.
             if (Math.abs(event.deltaY) > Math.abs(event.deltaX) && stripRef.current) stripRef.current.scrollLeft += event.deltaY;
           }}
-          className="scrollbar-none flex snap-x gap-1.5 overflow-x-auto scroll-smooth px-1 py-0.5 pr-10"
+          className="scrollbar-none flex snap-x gap-1.5 overflow-x-auto scroll-smooth px-1 py-0.5 pr-10 pl-1"
         >
           <CategoryPill active={categoryId === null} onClick={() => selectCategory(null)}>
             {t("pos.all")}
@@ -165,16 +185,18 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
             </CategoryPill>
           ))}
         </div>
-        <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-card to-transparent" />
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-label={t("pos.categoriesNext")}
-          onClick={() => stripRef.current?.scrollBy({ left: 280, behavior: "smooth" })}
-          className="absolute top-1/2 right-0 flex size-7 -translate-y-1/2 items-center justify-center rounded-[3px] border border-foreground/30 bg-card text-foreground hover:bg-foreground hover:text-background"
-        >
-          <ChevronRight className="size-4" />
-        </button>
+        {arrows.left ? (
+          <>
+            <div aria-hidden className="pointer-events-none absolute inset-y-0 left-0 w-10 bg-gradient-to-r from-card to-transparent" />
+            <StripArrow side="left" label={t("pos.categoriesPrev")} onClick={() => stripRef.current?.scrollBy({ left: -280, behavior: "smooth" })} />
+          </>
+        ) : null}
+        {arrows.right ? (
+          <>
+            <div aria-hidden className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-card to-transparent" />
+            <StripArrow side="right" label={t("pos.categoriesNext")} onClick={() => stripRef.current?.scrollBy({ left: 280, behavior: "smooth" })} />
+          </>
+        ) : null}
       </div>
 
       {errorKey ? (
@@ -201,6 +223,21 @@ export function ProductPanel({ onSelectVariant, scannerActive, lastScannedBarcod
       </ScrollArea>
       <VariantPicker style={picked} onClose={closePicker} onAdd={addPicked} />
     </section>
+  );
+}
+
+/** The arrow at either end of the category strip. */
+function StripArrow({ side, label, onClick }: { side: "left" | "right"; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      tabIndex={-1}
+      aria-label={label}
+      onClick={onClick}
+      className={`absolute top-1/2 flex size-7 -translate-y-1/2 items-center justify-center rounded-[3px] border border-foreground/30 bg-card text-foreground hover:bg-foreground hover:text-background ${side === "left" ? "left-0" : "right-0"}`}
+    >
+      {side === "left" ? <ChevronLeft className="size-4" /> : <ChevronRight className="size-4" />}
+    </button>
   );
 }
 

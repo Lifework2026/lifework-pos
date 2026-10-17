@@ -85,7 +85,13 @@ export function useScannerInput({ value, setValue, onScan, enabled = true, input
     focusIfIdle();
     document.addEventListener("focusout", onFocusOut);
     window.addEventListener("focus", focusIfIdle);
+    // A safety net for a focused button that is taken off the page (an item removed from the cart, a button that becomes
+    // disabled). The browser then drops focus to the page body WITHOUT any event, and the next scan would be typed into
+    // nothing until the page was reloaded. Checking a few times a second costs nothing and never touches a field the
+    // cashier is typing in, because it only acts when nothing has focus at all.
+    const timer = window.setInterval(focusIfIdle, 250);
     return () => {
+      window.clearInterval(timer);
       document.removeEventListener("focusout", onFocusOut);
       window.removeEventListener("focus", focusIfIdle);
     };
