@@ -26,6 +26,7 @@ const DUMP_TEXT = "pretend pg_dump output: tables and rows\n";
 function writeStubs(dir: string, bucket: string): void {
   const files: Record<string, string> = {
     pg_dump: `#!/usr/bin/env bash
+if [ "$1" = "--version" ]; then echo "\${FAKE_PG_DUMP_VERSION:-pg_dump (PostgreSQL) 17.6 (Ubuntu 17.6-1.pgdg24.04+1)}"; exit 0; fi
 out=""; url=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -105,8 +106,14 @@ function runBackup(overrides: Record<string, string> = {}, remove: string[] = []
     assert.ok(yml.includes("timeout-minutes:") && yml.includes("concurrency:"));
   });
 
-  await test("workflow: installs PostgreSQL 17 client, the same major version as the Supabase server", () => {
-    assert.ok(read(".github/workflows/db-backup.yml").includes("postgresql-client-17"));
+  await test("workflow: installs PostgreSQL 17, points every client tool at it, and fails if pg_dump is not 17", () => {
+    const yml = read(".github/workflows/db-backup.yml");
+    assert.ok(yml.includes("postgresql-client-17"));
+    for (const tool of ["pg_dump", "pg_restore", "psql"]) assert.ok(yml.includes(tool));
+    assert.ok(yml.includes("/usr/lib/postgresql/17/bin") && yml.includes('ln -sf "/usr/lib/postgresql/17/bin/${tool}" "/usr/local/bin/${tool}"'));
+    assert.ok(yml.includes('>> "$GITHUB_PATH"') && yml.includes("pg_dump --version"));
+    assert.ok(yml.includes('grep -q "(PostgreSQL) 17\\."'), "the step fails unless pg_dump reports 17");
+    assert.ok(yml.indexOf("Use the PostgreSQL 17 client") < yml.indexOf("Dump, encrypt and upload"), "the check runs before the dump");
   });
 
   await test("workflow: every secret reaches the script through env, never inline in a command", () => {
@@ -271,6 +278,27 @@ function runBackup(overrides: Record<string, string> = {}, remove: string[] = []
       try {
         assert.equal(run.status, 2, run.output);
         assert.deepEqual(readdirSync(run.bucket), []);
+      } finally {
+        rmSync(run.dir, { recursive: true, force: true });
+      }
+    });
+
+    await test("run: an older pg_dump first on PATH stops the backup before any dump, as happened on the first GitHub run", () => {
+      const run = runBackup({ FAKE_PG_DUMP_VERSION: "pg_dump (PostgreSQL) 16.15 (Ubuntu 16.15-1.pgdg24.04+2)" });
+      try {
+        assert.equal(run.status, 5, run.output);
+        assert.ok(run.output.includes("version 17 or newer") && run.output.includes("16.15"));
+        assert.ok(!existsSync(path.join(run.dir, "pg_dump.url")), "pg_dump did not try to dump");
+        assert.deepEqual(readdirSync(run.bucket), []);
+      } finally {
+        rmSync(run.dir, { recursive: true, force: true });
+      }
+    });
+
+    await test("run: a newer pg_dump (18) is accepted, and the version is read from PostgreSQL, not the Ubuntu build number", () => {
+      const run = runBackup({ FAKE_PG_DUMP_VERSION: "pg_dump (PostgreSQL) 18.1 (Ubuntu 16.15-1.pgdg24.04+2)" });
+      try {
+        assert.equal(run.status, 0, run.output);
       } finally {
         rmSync(run.dir, { recursive: true, force: true });
       }

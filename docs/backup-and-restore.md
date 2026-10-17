@@ -109,7 +109,7 @@ GitHub → **Actions** → **Nightly database backup** → **Run workflow** ร�
 
 กู้คืนลงฐานข้อมูล **ใหม่ที่ว่างเปล่า** เท่านั้น สคริปต์ไม่ล้างหรือลบอะไร ถ้าฐานเป้าหมายมีตารางอยู่แล้วจะหยุดพร้อมแจ้ง error
 
-1. ติดตั้ง PostgreSQL client เวอร์ชัน 17 (`pg_restore`) และ gpg
+1. ติดตั้ง PostgreSQL client เวอร์ชัน 17 ขึ้นไป (`pg_restore`) และ gpg ฐานเป้าหมายต้องเป็น PostgreSQL 17 ขึ้นไปด้วย เพราะไฟล์ที่ `pg_dump` 17 สร้างกู้ลงเวอร์ชันเก่ากว่าไม่ได้
 2. ดาวน์โหลดไฟล์ `.dump.gpg` ที่ต้องการจาก bucket
 3. สร้างฐานข้อมูลเปล่า เช่น Supabase project ใหม่ แล้วเอา Session pooler connection string มาเป็น `<target-url>`
 4. รัน:

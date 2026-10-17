@@ -32,6 +32,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
 
+      # The runner already has a PostgreSQL 16 client first on PATH, and installing 17 does not replace it.
+      # Point every client tool at the 17 binaries (/usr/local/bin comes before /usr/bin), put them first on PATH
+      # for the next step, and stop here if pg_dump is still not 17.
+      - name: Use the PostgreSQL 17 client
+        run: |
+          for tool in pg_dump pg_restore psql; do
+            sudo ln -sf "/usr/lib/postgresql/17/bin/${tool}" "/usr/local/bin/${tool}"
+          done
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          hash -r
+          command -v pg_dump
+          pg_dump --version
+          pg_dump --version | grep -q "(PostgreSQL) 17\." || { echo "pg_dump is not version 17" >&2; exit 1; }
+
       - name: Dump, encrypt and upload
         env:
           BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}

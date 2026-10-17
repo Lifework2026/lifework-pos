@@ -30,6 +30,16 @@ if [ "${#BACKUP_PASSPHRASE}" -lt 16 ]; then
   exit 2
 fi
 
+# The Supabase server runs PostgreSQL 17, and pg_dump refuses to dump a newer server. Fail early with a clear message
+# instead of letting an older client that is first on PATH abort halfway.
+MIN_PG_MAJOR="${BACKUP_MIN_PG_MAJOR:-17}"
+PG_DUMP_VERSION="$(pg_dump --version)"
+PG_DUMP_MAJOR="$(printf '%s' "$PG_DUMP_VERSION" | grep -oE '[(]PostgreSQL[)] [0-9]+' | grep -oE '[0-9]+$' || true)"
+if [ -z "$PG_DUMP_MAJOR" ] || [ "$PG_DUMP_MAJOR" -lt "$MIN_PG_MAJOR" ]; then
+  echo "pg_dump must be version $MIN_PG_MAJOR or newer, but the one on PATH is: $PG_DUMP_VERSION ($(command -v pg_dump))" >&2
+  exit 5
+fi
+
 # libpq rejects Prisma-only options such as ?pgbouncer=true, so remove them if someone pasted DATABASE_URL.
 clean_url() {
   local url="$1" param
