@@ -41,3 +41,7 @@ next-env.d.ts
 # Database backups must never be committed, even by accident
 *.dump
 *.dump.gpg
+
+# Working files: exports from scripts and supplier workbooks dropped in the project folder
+/exports/
+/*.xlsx
