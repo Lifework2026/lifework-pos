@@ -62,6 +62,7 @@ async function main(): Promise<void> {
           if (change !== 0) await tx.productVariant.update({ where: { id: move.variantId }, data: { stockQuantity: { decrement: change } } });
         }
         await tx.inventoryMovement.deleteMany({ where: { createdAt: { gt: since }, OR: [{ reference: null }, { reference: { not: REFERENCE } }] } });
+        await tx.refund.deleteMany({ where: { order: { createdAt: { gt: since } } } }); // a refund holds on to the lines and payments it paid back
         await tx.order.deleteMany({ where: { createdAt: { gt: since } } });
         await tx.edcPayment.deleteMany({ where: { createdAt: { gt: since } } });
         await tx.heldBill.deleteMany({ where: { createdAt: { gt: since } } });
@@ -95,7 +96,9 @@ async function main(): Promise<void> {
     await prisma.$transaction(
       async (tx) => {
         await tx.inventoryMovement.deleteMany({ where: { createdAt: { gte: since } } });
-        await tx.order.deleteMany({ where: { createdAt: { gte: since } } }); // items, payments and refunds go with the bill
+        // A refund holds on to the bill lines and payments it paid back, so refunds go first; then items and payments go with the bill.
+        await tx.refund.deleteMany({ where: { order: { createdAt: { gte: since } } } });
+        await tx.order.deleteMany({ where: { createdAt: { gte: since } } });
         await tx.edcPayment.deleteMany({ where: { createdAt: { gte: since } } });
         await tx.heldBill.deleteMany({ where: { createdAt: { gte: since } } });
         await tx.$executeRaw`UPDATE "ProductVariant" v SET "stockQuantity" = s.q FROM (SELECT unnest(${ids}::text[]) AS id, unnest(${values}::int[]) AS q) s WHERE v.id = s.id`;
