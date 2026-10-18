@@ -12,8 +12,8 @@
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
-import { findPhotoBlocks, padBox, type Box } from "../lib/catalog/photo-detect";
-import { joinBoxes, parseCutPlan, splitBox, trimLabelBelow, type Cut } from "../lib/catalog/page-cut";
+import { findPhotoBlocks, type Box } from "../lib/catalog/photo-detect";
+import { joinBoxes, padInBlank, parseCutPlan, splitBox, trimLabelBelow, type Cut } from "../lib/catalog/page-cut";
 import { toWebp, writePhotoReview, type EncodedPhoto, type PreviewCard } from "../lib/catalog/style-photo-files";
 
 const args = process.argv.slice(2);
@@ -100,14 +100,18 @@ async function main(): Promise<void> {
         fail(label, `${style} has no colour ${cut.colour} (it has ${Array.from(colour.keys()).join(", ")})`);
         continue;
       }
+      if (cut.whole) {
+        const photo = await toWebp(await flat.clone().png().toBuffer());
+        const hasOwn = product.colorImages.some((c) => c.colorId === found.colorId);
+        jobs.push({ file: line.file, style, label, target: { kind: "colour", productId: product.id, colorId: found.colorId }, photo, sourcePx, soft, keep: hasOwn && !replace });
+        continue;
+      }
       const box = cutBox(cut, boxes, grey, info.width);
       if (typeof box === "string") {
         fail(label, `${box} (found ${boxes.length} box(es))`);
         continue;
       }
-      const padded = padBox(box.box, info.width, info.height, 0.03);
-      // A cut-off colour name must not come back with the margin.
-      if (box.trimmed) padded.height = Math.min(padded.height, box.box.y + box.box.height + 3 - padded.y);
+      const padded = padInBlank(grey, info.width, info.height, box.box, 0.03);
       const photo = await toWebp(await flat.clone().extract({ left: padded.x, top: padded.y, width: padded.width, height: padded.height }).png().toBuffer());
       const hasOwn = product.colorImages.some((c) => c.colorId === found.colorId);
       jobs.push({ file: line.file, style, label, target: { kind: "colour", productId: product.id, colorId: found.colorId }, photo, sourcePx, soft, keep: hasOwn && !replace, trimmed: box.trimmed });

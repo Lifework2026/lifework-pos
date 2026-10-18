@@ -1,6 +1,6 @@
 // Cutting colour photos out of product pages from a plan. Run with: npx tsx tests/page-cut.test.ts
 import assert from "node:assert/strict";
-import { joinBoxes, parseCutPlan, splitBox, tighten, trimLabelBelow } from "../lib/catalog/page-cut";
+import { joinBoxes, padInBlank, parseCutPlan, splitBox, tighten, trimLabelBelow } from "../lib/catalog/page-cut";
 
 let passed = 0;
 function test(name: string, fn: () => void): void {
@@ -26,6 +26,23 @@ test("the plan reads boxes, joined boxes, left and right halves, and the style p
   assert.equal(lines[2].style, true);
   assert.equal(lines[2].cuts.length, 0);
   assert.deepEqual(lines[3].cuts.map((c) => [c.parts[0].box, c.colour]), [[2, "36"], [3, "08"]]);
+});
+
+test("the plan reads top and bottom halves and a whole-picture colour", () => {
+  const { lines, errors } = parseCutPlan(["LW1.jpg: 1B=91 2T=98", "LW2.jpg: ALL=40"].join("\n"));
+  assert.deepEqual(errors, []);
+  assert.deepEqual(lines[0].cuts.map((c) => c.parts[0].side), ["B", "T"]);
+  assert.deepEqual(lines[1].cuts[0], { parts: [], colour: "40", whole: true });
+  assert.ok(parseCutPlan("LW2.jpg: ALL=40 ALL=40").errors.some((e) => /given twice/.test(e)));
+});
+
+test("two photos stacked in one box are cut apart at the blank gap between them", () => {
+  const grey = page();
+  fill(grey, 100, 40, 120, 90);
+  fill(grey, 90, 160, 140, 100);
+  const box = tighten(grey, W, whole);
+  assert.deepEqual(splitBox(grey, W, box, "T"), { x: 100, y: 40, width: 120, height: 90 });
+  assert.deepEqual(splitBox(grey, W, box, "B"), { x: 90, y: 160, width: 140, height: 100 });
 });
 
 test("a plan that cannot be read says which line and why, and never guesses", () => {
@@ -116,6 +133,19 @@ test("a long band at the bottom is part of the photo, not a name", () => {
   fill(grey, 100, 170, 120, 90);
   const box = tighten(grey, W, whole);
   assert.equal(trimLabelBelow(grey, W, box).trimmed, false);
+});
+
+test("the margin grows through blank space only, so a colour name just under the photo stays out", () => {
+  const grey = page();
+  fill(grey, 100, 50, 120, 200);
+  fill(grey, 140, 258, 40, 10);
+  const box = tighten(grey, W, { x: 0, y: 0, width: W, height: 255 });
+  const padded = padInBlank(grey, W, H, box, 0.05);
+  assert.equal(padded.y + padded.height, 258, "stops where the name starts");
+  assert.equal(padded.x, 100 - 10, "the free sides get the whole margin (5% of the longer side)");
+  assert.equal(padded.width, 120 + 20);
+  const alone = padInBlank(grey, W, H, { x: 100, y: 50, width: 120, height: 100 }, 0.05);
+  assert.equal(alone.y, 50 - 6);
 });
 
 test("joining boxes gives the box that holds them all", () => {
