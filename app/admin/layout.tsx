@@ -32,6 +32,7 @@ const NAV_GROUPS: { title: MessageKey | null; items: { href: string; key: Messag
       { href: "/admin/products", key: "nav.products" },
       { href: "/admin/catalog", key: "nav.catalog" },
       { href: "/admin/colors", key: "nav.colors" },
+      { href: "/admin/photo-cutter", key: "nav.photoCutter" },
       { href: "/admin/master-data", key: "nav.masterData" },
       { href: "/admin/excel", key: "nav.excel" },
     ],

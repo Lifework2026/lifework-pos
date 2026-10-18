@@ -134,6 +134,8 @@ export interface StyleVariant {
   stockQuantity: number;
   /** The photo for this colour: its own, else the style photo, else none. */
   imageUrl: string | null;
+  /** True when this colour has a photo of its own (not the style photo shown in its place). */
+  ownPhoto: boolean;
 }
 
 /** A style with all its colours and sizes: the till shows one card per style. */

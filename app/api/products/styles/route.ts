@@ -80,6 +80,7 @@ export async function GET(request: NextRequest): Promise<Response> {
           price: formatMoney(variant.price),
           stockQuantity: variant.stockQuantity,
           imageUrl: variantImageUrl(product, variant.colorId),
+          ownPhoto: product.colorImages.some((image) => image.colorId === variant.colorId),
         })),
       })),
     };

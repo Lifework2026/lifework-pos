@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { ProductThumb } from "@/components/pos/product-thumb";
-import { priceRange, styleBadge, totalStock } from "@/lib/catalog/style-group";
+import { cardImage, priceRange, styleBadge, totalStock } from "@/lib/catalog/style-group";
 import { formatBaht } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import { localizedName } from "@/lib/payment-labels";
@@ -27,7 +27,7 @@ export const StyleCard = memo(function StyleCard({ style, onOpen }: StyleCardPro
   const name = localizedName(locale, style.name, style.nameTh);
   const stock = totalStock(style.variants);
   const { min, max } = priceRange(style.variants);
-  const photo = style.imageUrl ?? style.variants.find((variant) => variant.imageUrl)?.imageUrl ?? null;
+  const photo = cardImage(style);
   const soldOut = stock <= 0;
 
   return (

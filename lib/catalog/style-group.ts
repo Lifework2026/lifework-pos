@@ -82,6 +82,18 @@ export function defaultSelection(variants: StyleVariant[]): { colorId: string | 
   return { colorId: color.colorId, variantId: ofColor.length === 1 ? ofColor[0].id : null };
 }
 
+/**
+ * The photo on the style's card in the grid: the photo of a colour that has one of its own, preferring a colour that is
+ * in stock and then the first by name, because a photo taken of the product is sharper than the style photo that came
+ * from the supplier sheet. Without any colour photo it is the style photo, then the first photo of any variant.
+ */
+export function cardImage(style: StyleSummary): string | null {
+  const own = styleColors(style.variants.filter((variant) => variant.ownPhoto && variant.imageUrl));
+  const best = own.find((colour) => colour.stock > 0) ?? own[0];
+  if (best?.imageUrl) return best.imageUrl;
+  return style.imageUrl ?? style.variants.find((variant) => variant.imageUrl)?.imageUrl ?? null;
+}
+
 /** The cart takes the same shape the barcode lookup returns. */
 export function toVariantSummary(style: StyleSummary, variant: StyleVariant): VariantSummary {
   return {

@@ -8,6 +8,7 @@ import {
   styleBadge,
   styleColors,
   styleSizes,
+  cardImage,
   toVariantSummary,
   totalStock,
   variantsOfColor,
@@ -22,7 +23,7 @@ function test(name: string, fn: () => void): void {
 }
 
 let n = 0;
-const v = (colorId: string, color: string, size: string, stock: number, price = "1290.00", imageUrl: string | null = null): StyleVariant => ({
+const v = (colorId: string, color: string, size: string, stock: number, price = "1290.00", imageUrl: string | null = null, ownPhoto = false): StyleVariant => ({
   id: `v${++n}`,
   sku: `SKU-${colorId}-${size}`,
   barcode: `BC-${colorId}-${size}`,
@@ -32,6 +33,7 @@ const v = (colorId: string, color: string, size: string, stock: number, price = 
   price,
   stockQuantity: stock,
   imageUrl,
+  ownPhoto,
 });
 
 const style = (variants: StyleVariant[]): StyleSummary => ({
@@ -103,6 +105,20 @@ test("cart shape: the picked variant looks exactly like a barcode lookup result,
   assert.equal(summary.price, "790.00");
   assert.equal(summary.stockQuantity, 3);
   assert.deepEqual(summary.product, { id: "p1", name: "LW265TS990", nameTh: null, imageUrl: "white.webp", promoTag: null, brand: "Lifework", categoryId: "c1" });
+});
+
+test("card photo: a colour photo of its own beats the supplier style photo, preferring a colour in stock", () => {
+  const withOwn = style([v("b", "BLACK", "S", 0, "1", "black.webp", true), v("w", "WHITE", "S", 5, "1", "white.webp", true)]);
+  assert.equal(cardImage(withOwn), "white.webp", "the colour in stock wins");
+  const none = style([v("b", "BLACK", "S", 0, "1", "black.webp", true), v("w", "WHITE", "S", 0, "1", "white.webp", true)]);
+  assert.equal(cardImage(none), "black.webp", "with nothing in stock, the first colour by name");
+});
+
+test("card photo: with no colour photo it is the style photo, then any photo, then none", () => {
+  assert.equal(cardImage(style([v("a", "X", "S", 1, "1", "style.webp", false)])), "https://files.example/style.webp");
+  const noStyle = { ...style([v("a", "X", "S", 1, "1", "fallback.webp", false)]), imageUrl: null };
+  assert.equal(cardImage(noStyle), "fallback.webp");
+  assert.equal(cardImage({ ...style([v("a", "X", "S", 1)]), imageUrl: null }), null);
 });
 
 console.log(`\n${passed} style-group tests passed`);

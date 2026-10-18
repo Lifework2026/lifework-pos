@@ -179,8 +179,8 @@ const read = (rel: string) => readFileSync(path.join(__dirname, "..", rel), "utf
     const layout = read("app/admin/layout.tsx");
     assert.ok(layout.includes("<aside") && layout.includes("bg-zinc-950") && layout.includes("<AdminNav") && !layout.includes("max-w-7xl") && !layout.includes("<header"));
     const hrefs = Array.from(layout.matchAll(/href: "(\/admin[^"]*)"/g)).map((m) => m[1]);
-    assert.equal(hrefs.length, 14);
-    assert.equal(new Set(hrefs).size, 14, "no page is listed twice");
+    assert.equal(hrefs.length, 15);
+    assert.equal(new Set(hrefs).size, 15, "no page is listed twice");
     const keys = Array.from(layout.matchAll(/key: "(nav\.[A-Za-z]+)"/g)).map((m) => m[1]);
     const groups = Array.from(layout.matchAll(/title: "(nav\.group[A-Za-z]+)"/g)).map((m) => m[1]);
     for (const locale of LOCALES) {
