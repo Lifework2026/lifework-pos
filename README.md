@@ -39,7 +39,7 @@ npm run dev
 | `DATABASE_URL` | yes | Supabase pooled connection (port 6543, `?pgbouncer=true`) |
 | `DIRECT_URL` | yes | Supabase direct connection (port 5432), used by migrations |
 | `AUTH_SECRET` | yes | 32+ random characters. Sessions are signed with it |
-| `EDC_MODE` | no | `simulator` (default) or `bridge` |
+| `EDC_MODE` | no | `manual` (default and also what an unset value or `simulator` means in production: the cashier keys the amount on the shop's EDC machine and types the slip reference into the till), `bridge`, or `simulator` (development only) |
 | `EDC_BRIDGE_URL`, `EDC_BRIDGE_TOKEN`, `EDC_WEBHOOK_SECRET` | with `bridge` | Card terminal bridge |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | for photos | Server-side only. Without them the till works and photo upload is disabled |
 | `SUPABASE_STORAGE_BUCKET` | no | Defaults to `product-images` |

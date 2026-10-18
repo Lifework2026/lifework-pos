@@ -14,17 +14,17 @@ function test(name: string, fn: () => void): void {
   console.log(`PASS  ${name}`);
 }
 
-test("manual card entry is a manager action on the server", () => {
+test("manual card entry is open to any signed-in staff, and every entry is audited", () => {
   const source = read("app/api/edc/payments/manual/route.ts");
-  assert.ok(source.includes("await requireManager()"), "manual route must require a manager");
-  assert.ok(!source.includes("getCurrentSession()"), "manual route must not fall back to any signed-in user");
+  assert.ok(source.includes("await requireUser()") && !source.includes("requireManager"), "a cashier records the slip reference herself");
+  assert.ok(source.includes("EDC_MANUAL_RECORDED") && source.includes("userId: auth.user.id"), "who typed which reference is kept");
 });
 
-test("manual card entry is hidden from cashiers in the till", () => {
+test("manual card entry is shown to every role in the till, and is the whole card screen in manual mode", () => {
   const source = read("components/pos/card-payment-line.tsx");
-  assert.ok(source.includes("const canManual = canManage(useSessionUser()?.role)"));
-  assert.ok(source.includes("{canManual && !manualOpen && !approved ? ("), "manual toggle must be gated");
-  assert.ok(source.includes("{canManual && manualOpen ? ("), "manual form must be gated");
+  assert.ok(!source.includes("canManage") && !source.includes("canManual"), "no role gate on the slip reference");
+  assert.ok(source.includes("manualOnly"), "manual mode shows the slip form straight away");
+  assert.ok(source.includes('"/api/edc/mode"'));
 });
 
 test("member registration is a manager action on the server; lookup stays open", () => {

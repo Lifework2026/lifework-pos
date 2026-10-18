@@ -52,10 +52,10 @@ else if (/^(changeme|secret|password|replace)/i.test(secret)) problems.push("AUT
 else ok.push(`AUTH_SECRET is set (${secret.length} characters).`);
 
 // Card terminal
-const edcMode = (env.EDC_MODE ?? "simulator").toLowerCase();
-if (edcMode !== "simulator" && edcMode !== "bridge") problems.push('EDC_MODE must be "simulator" or "bridge".');
+const edcMode = (env.EDC_MODE ?? "manual").toLowerCase();
+if (!["manual", "standalone", "simulator", "bridge"].includes(edcMode)) problems.push('EDC_MODE must be "manual" (standalone), "bridge" or "simulator".');
 else {
-  ok.push(`EDC_MODE is ${edcMode}.`);
+  ok.push(edcMode === "standalone" || edcMode === "manual" ? "EDC_MODE is manual: the cashier types the slip reference." : `EDC_MODE is ${edcMode}.`);
   if (edcMode === "bridge") {
     for (const key of ["EDC_BRIDGE_URL", "EDC_BRIDGE_TOKEN", "EDC_WEBHOOK_SECRET"]) {
       if (!env[key]) problems.push(`${key} is required when EDC_MODE=bridge.`);

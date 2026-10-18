@@ -3,15 +3,30 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { canManage, useSessionUser } from "@/components/auth/session-context";
 import { Input } from "@/components/ui/input";
 import { formatBaht } from "@/lib/format";
 import { useI18n } from "@/lib/i18n/client";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type { ApiErrorBody } from "@/lib/pos-types";
 import type { EdcPaymentDto } from "@/lib/edc/types";
+import type { EdcMode } from "@/lib/edc/mode";
 
 const POLL_INTERVAL_MS = 1_500;
+
+/** How card payments are taken here. Asked once per page load; if it cannot be asked, the safe answer is the slip reference. */
+let modeRequest: Promise<EdcMode> | null = null;
+function loadEdcMode(): Promise<EdcMode> {
+  if (!modeRequest) {
+    modeRequest = fetch("/api/edc/mode", { cache: "no-store" })
+      .then((res) => (res.ok ? (res.json() as Promise<{ mode?: EdcMode }>) : { mode: "manual" as EdcMode }))
+      .then((body) => body.mode ?? "manual")
+      .catch(() => {
+        modeRequest = null;
+        return "manual" as EdcMode;
+      });
+  }
+  return modeRequest;
+}
 
 const FAILURE_KEYS: Record<string, MessageKey> = {
   FAILED: "card.failed",
@@ -35,12 +50,12 @@ interface CardPaymentLineProps {
 /**
  * One card tender on the bill. Sends the line amount to the terminal, shows the waiting
  * state, polls until the terminal answers, and reports the approved payment to the checkout.
- * Also offers the manual slip-reference fallback for a dead bridge.
+ * In manual mode (the shop's EDC machine used on its own) there is no terminal to send to: the cashier types the slip
+ * reference. In the other modes the same entry is the fallback for a dead terminal. Any signed-in staff can use it.
  */
 export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange }: CardPaymentLineProps) {
-  // Typing a terminal reference by hand is a manager action only: it is the one way to record a card sale without the terminal.
-  const canManual = canManage(useSessionUser()?.role);
   const { t } = useI18n();
+  const [mode, setMode] = useState<EdcMode | null>(null);
   const [payment, setPayment] = useState<EdcPaymentDto | null>(null);
   const [starting, setStarting] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
@@ -49,6 +64,17 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
   const [error, setError] = useState<string | null>(null);
   const reportedRef = useRef(false);
 
+  useEffect(() => {
+    let live = true;
+    loadEdcMode().then((m) => {
+      if (live) setMode(m);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const manualOnly = mode === "manual";
   const pending = payment?.status === "PENDING";
   const approved = payment?.status === "SUCCESS";
 
@@ -156,7 +182,9 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
 
   return (
     <div className="flex flex-col gap-3">
-      {!payment ? (
+      {mode === null ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
+
+      {mode !== null && !manualOnly && !payment ? (
         <Button size="lg" onClick={start} disabled={disabled || starting || amount <= 0} className="h-auto min-h-11 whitespace-normal py-2">
           {starting ? <Loader2 className="size-4 animate-spin" /> : null}
           {t("card.send", { amount: formatBaht(amount) })}
@@ -185,7 +213,7 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
         </div>
       ) : null}
 
-      {canManual && !manualOpen && !approved ? (
+      {!manualOnly && mode !== null && !manualOpen && !approved ? (
         <button
           type="button"
           className="self-start text-sm text-muted-foreground underline underline-offset-4"
@@ -195,24 +223,36 @@ export function CardPaymentLine({ amount, disabled, onApproved, onPendingChange 
         </button>
       ) : null}
 
-      {canManual && manualOpen ? (
+      {(manualOnly || manualOpen) && mode !== null ? (
         <div className="flex flex-col gap-2">
-          <label htmlFor={`manual-ref-${amount}`} className="text-sm font-medium">
-            {t("card.terminalRef")}
-          </label>
-          <Input
-            id={`manual-ref-${amount}`}
-            value={manualRef}
-            onChange={(event) => setManualRef(event.target.value)}
-            placeholder="e.g. 0012345678"
-            className="font-mono"
-          />
-          <label className="text-sm font-medium">{t("card.approvalCode")}</label>
-          <Input value={manualApproval} onChange={(event) => setManualApproval(event.target.value)} className="font-mono" />
+          {manualOnly ? <p className="text-sm text-muted-foreground">{t("card.manualOnly")}</p> : null}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`manual-ref-${amount}`} className="text-sm font-medium">
+                {t("card.terminalRef")}
+              </label>
+              <Input
+                id={`manual-ref-${amount}`}
+                value={manualRef}
+                onChange={(event) => setManualRef(event.target.value)}
+                placeholder="e.g. 0012345678"
+                className="font-mono"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`manual-approval-${amount}`} className="text-sm font-medium">
+                {t("card.approvalCode")}
+              </label>
+              <Input id={`manual-approval-${amount}`} value={manualApproval} onChange={(event) => setManualApproval(event.target.value)} className="font-mono" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("card.refHint")}</p>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setManualOpen(false)}>
-              {t("card.back")}
-            </Button>
+            {manualOnly ? null : (
+              <Button variant="outline" onClick={() => setManualOpen(false)}>
+                {t("card.back")}
+              </Button>
+            )}
             <Button className="flex-1" onClick={recordManual} disabled={manualRef.trim().length < 4}>
               {t("card.record")}
             </Button>

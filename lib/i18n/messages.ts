@@ -161,6 +161,8 @@ const en = {
   "card.approvalCode": "Approval code (optional)",
   "card.back": "Back",
   "card.record": "Record card payment",
+  "card.manualOnly": "Charge the card on the shop's EDC machine, then type the number from the slip here.",
+  "card.refHint": "Use the REF / RRN number from the slip. Add the approval code if you can.",
 
   // Member
   "member.remove": "Remove member",
@@ -1151,6 +1153,8 @@ const th: Record<MessageKey, string> = {
   "card.approvalCode": "รหัสอนุมัติ (ไม่บังคับ)",
   "card.back": "กลับ",
   "card.record": "บันทึกการชำระด้วยบัตร",
+  "card.manualOnly": "กดยอดและรูดบัตรที่เครื่อง EDC ของร้าน แล้วกรอกเลขจากสลิปด้านล่าง",
+  "card.refHint": "ใช้เลข REF / RRN จากสลิป และใส่รหัสอนุมัติด้วยถ้ามี",
 
   "member.remove": "นำสมาชิกออก",
   "member.points": "{phone} · {points} แต้ม",

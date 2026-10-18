@@ -550,7 +550,8 @@ export function CheckoutDialog({ open, onOpenChange, onCompleted }: CheckoutDial
                 </section>
               </div>
 
-              <DialogFooter>
+              {/* Stuck to the bottom: the card screen (slip boxes) makes the dialog taller than a 768 px laptop, and the confirm button must never scroll away. */}
+              <DialogFooter className="sticky bottom-0 z-10 bg-background">
                 <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting || cardPending}>
                   {t("common.cancel")}
                 </Button>

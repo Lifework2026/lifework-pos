@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatMoney } from "@/lib/api";
 import { BridgeEdcProvider, toTerminalState, type BridgeStatusResponse } from "./bridge-provider";
 import { SimulatorEdcProvider } from "./simulator-provider";
+import { resolveEdcMode } from "./mode";
 import {
   EdcUnavailableError,
   type EdcPaymentDto,
@@ -35,11 +36,14 @@ export class EdcServiceError extends Error {
 
 let cachedProvider: EdcProvider | null = null;
 
-/** Chooses the terminal transport from EDC_MODE. The simulator is refused in production. */
+/** Chooses the terminal transport from EDC_MODE. In manual mode there is no terminal to talk to, so there is no provider. */
 export function getEdcProvider(): EdcProvider {
   if (cachedProvider) return cachedProvider;
 
-  const mode = (process.env.EDC_MODE ?? "simulator").trim().toLowerCase();
+  const mode = resolveEdcMode(process.env);
+  if (mode === "manual") {
+    throw new EdcServiceError(409, "EDC_MANUAL_MODE", "This till takes card payments from the EDC slip. Enter the slip reference instead.");
+  }
 
   if (mode === "bridge") {
     const baseUrl = process.env.EDC_BRIDGE_URL;
@@ -48,13 +52,8 @@ export function getEdcProvider(): EdcProvider {
       baseUrl: baseUrl.replace(/\/$/, ""),
       token: process.env.EDC_BRIDGE_TOKEN ?? "",
     });
-  } else if (mode === "simulator") {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("The EDC simulator cannot run in production. Set EDC_MODE=bridge.");
-    }
-    cachedProvider = new SimulatorEdcProvider();
   } else {
-    throw new Error(`Unknown EDC_MODE "${mode}". Use "bridge" or "simulator".`);
+    cachedProvider = new SimulatorEdcProvider();
   }
 
   return cachedProvider;
@@ -290,7 +289,7 @@ export async function recordManualEdcPayment(input: {
     return toEdcPaymentDto(payment);
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      throw new EdcServiceError(409, "REFERENCE_ALREADY_USED", "This transaction reference has already been recorded.");
+      throw new EdcServiceError(409, "REFERENCE_ALREADY_USED", "This reference was already used for another card payment. Use the REF or RRN number from the slip, or add the approval code to it.");
     }
     throw err;
   }
