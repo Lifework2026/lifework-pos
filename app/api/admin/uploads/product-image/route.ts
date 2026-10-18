@@ -34,7 +34,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch (err) {
     if (err instanceof StorageError) {
       console.error("[POST /api/admin/uploads/product-image]", err.code, err.message);
-      return apiError(502, err.code, "The photo could not be saved to storage. Check the storage settings and try again.");
+      return apiError(502, err.code, `The photo could not be saved to storage. ${err.message} Open /api/admin/storage-check while signed in to see what is wrong.`);
     }
     console.error("[POST /api/admin/uploads/product-image]", err);
     return apiError(500, "INTERNAL_ERROR", "The photo could not be uploaded.");

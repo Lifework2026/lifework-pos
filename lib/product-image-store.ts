@@ -20,7 +20,7 @@ export function imageFailure(err: unknown, label: string): Response {
   if (err instanceof ProductImageNotFound) return apiError(404, "NOT_FOUND", "Product or colour not found.");
   if (err instanceof StorageError) {
     console.error(label, err.code, err.message);
-    return apiError(502, err.code, "The photo could not be saved to storage. Check the storage settings and try again.");
+    return apiError(502, err.code, `The photo could not be saved to storage. ${err.message} Open /api/admin/storage-check while signed in to see what is wrong.`);
   }
   console.error(label, err);
   return apiError(500, "INTERNAL_ERROR", "The photo could not be saved.");

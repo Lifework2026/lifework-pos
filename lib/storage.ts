@@ -114,3 +114,95 @@ export async function deleteProductImage(config: StorageConfig, path: string, fe
     // Orphaned files are harmless. Never fail a product update because of cleanup.
   }
 }
+
+export interface StorageCheckStep {
+  name: string;
+  ok: boolean;
+  /** What was found, in plain words. Never contains the key. */
+  detail: string;
+}
+
+export interface StorageCheck {
+  ok: boolean;
+  steps: StorageCheckStep[];
+  /** The first thing to fix, or a line saying everything works. */
+  hint: string;
+}
+
+/** The role and project named inside a Supabase key (a JWT), without verifying it. Null when it is not shaped like one. */
+function readKey(key: string): { role: string | null; ref: string | null } | null {
+  const parts = key.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as { role?: unknown; ref?: unknown };
+    return { role: typeof payload.role === "string" ? payload.role : null, ref: typeof payload.ref === "string" ? payload.ref : null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Checks the storage settings one step at a time and says what is wrong, without ever showing the key: the settings
+ * are readable and sensible, the bucket answers, and a small test file can be written and removed. Used by the
+ * back office storage check, so a failure on the live site can be understood without reading the server log.
+ */
+export async function checkStorage(config: StorageConfig | null, fetchImpl: typeof fetch = fetch): Promise<StorageCheck> {
+  const steps: StorageCheckStep[] = [];
+  const finish = (hint: string): StorageCheck => ({ ok: steps.every((step) => step.ok), steps, hint });
+
+  if (!config) {
+    steps.push({ name: "settings", ok: false, detail: "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set on this server." });
+    return finish("Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to the environment, then redeploy.");
+  }
+
+  let host = "";
+  try {
+    const parsed = new URL(config.url);
+    host = parsed.hostname;
+    const looksRight = parsed.protocol === "https:" && parsed.pathname === "/" && host.endsWith(".supabase.co");
+    steps.push({ name: "url", ok: looksRight, detail: looksRight ? `SUPABASE_URL points at ${host}.` : `SUPABASE_URL is "${config.url}". It should look like https://<project>.supabase.co with nothing after it.` });
+  } catch {
+    steps.push({ name: "url", ok: false, detail: "SUPABASE_URL is not a valid address. It should look like https://<project>.supabase.co." });
+  }
+
+  const key = readKey(config.key);
+  const stray = /[\s"'\[\]]/.test(config.key);
+  if (stray) {
+    steps.push({ name: "key", ok: false, detail: "The service-role key has a space, quote or square bracket inside it. Paste the bare key, without [ ] or quotation marks." });
+  } else if (!key) {
+    steps.push({ name: "key", ok: false, detail: "The service-role key is not shaped like a Supabase key (three parts separated by dots). It may be cut off or the wrong value." });
+  } else if (key.role !== "service_role") {
+    steps.push({ name: "key", ok: false, detail: `The key is a "${key.role ?? "unknown"}" key. Uploads need the service_role key (Project Settings > API).` });
+  } else if (host && key.ref && !host.startsWith(`${key.ref}.`)) {
+    steps.push({ name: "key", ok: false, detail: `The key belongs to project ${key.ref}, but SUPABASE_URL points at ${host}.` });
+  } else {
+    steps.push({ name: "key", ok: true, detail: "The key is a service_role key for the same project as SUPABASE_URL." });
+  }
+
+  try {
+    const bucket = await fetchImpl(`${config.url}/storage/v1/bucket/${config.bucket}`, { headers: authHeaders(config) });
+    if (bucket.ok) steps.push({ name: "bucket", ok: true, detail: `The bucket "${config.bucket}" exists.` });
+    else if (bucket.status === 404 || bucket.status === 400) steps.push({ name: "bucket", ok: false, detail: `The bucket "${config.bucket}" was not found (HTTP ${bucket.status}). It is created on the first upload, or run supabase/storage-product-images.sql.` });
+    else steps.push({ name: "bucket", ok: false, detail: `Storage refused the key (HTTP ${bucket.status}).` });
+  } catch {
+    steps.push({ name: "bucket", ok: false, detail: "Storage could not be reached from this server." });
+  }
+
+  // A one-pixel PNG, written and removed again.
+  const pixel = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+  const path = `diagnostics/${randomUUID()}.png`;
+  try {
+    const upload = await fetchImpl(`${config.url}/storage/v1/object/${config.bucket}/${path}`, {
+      method: "POST",
+      headers: { ...authHeaders(config), "Content-Type": "image/png", "x-upsert": "false" },
+      body: pixel as unknown as BodyInit,
+    });
+    steps.push({ name: "write", ok: upload.ok, detail: upload.ok ? "A test file was written to the bucket." : `A test file could not be written (HTTP ${upload.status}).` });
+    if (upload.ok) await deleteProductImage(config, path, fetchImpl);
+  } catch {
+    steps.push({ name: "write", ok: false, detail: "A test file could not be written: storage could not be reached." });
+  }
+
+  const failed = steps.find((step) => !step.ok);
+  return finish(failed ? failed.detail : "Storage works: the settings are right and a test file was written and removed.");
+}

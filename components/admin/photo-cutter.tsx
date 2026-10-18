@@ -320,7 +320,16 @@ export function PhotoCutter() {
                     <Loader2 className="size-3.5 animate-spin" /> {t("cutter.saving")}
                   </p>
                 ) : null}
-                {box.status === "error" ? <p className="text-xs text-destructive">{box.message}</p> : null}
+                {box.status === "error" ? (
+                  <p className="text-xs text-destructive">
+                    {box.message}{" "}
+                    {box.message?.includes("storage-check") ? (
+                      <a href="/api/admin/storage-check" target="_blank" rel="noreferrer" className="font-bold underline">
+                        {t("cutter.checkStorage")}
+                      </a>
+                    ) : null}
+                  </p>
+                ) : null}
               </div>
               <Button type="button" variant="ghost" size="icon-sm" aria-label={t("cutter.remove")} disabled={box.status === "saving"} onClick={() => setBoxes((current) => current.filter((b) => b.id !== box.id))}>
                 <Trash2 className="size-4" />
