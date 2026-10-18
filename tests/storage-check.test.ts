@@ -17,12 +17,14 @@ const SECRET = jwt({ role: "service_role", ref: "abcdefghij" });
 const config = (over: Partial<StorageConfig> = {}): StorageConfig => ({ url: "https://abcdefghij.supabase.co", key: SECRET, bucket: "product-images", ...over });
 
 /** A storage server that answers each kind of request with the given status. */
-function fakeFetch(statuses: { bucket?: number; upload?: number } = {}): typeof fetch {
+function fakeFetch(statuses: { bucket?: number; upload?: number; bucketSays?: string; uploadSays?: string } = {}): typeof fetch {
   return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
-    const status = method === "DELETE" ? 200 : url.includes("/storage/v1/bucket/") ? (statuses.bucket ?? 200) : (statuses.upload ?? 200);
-    return new Response("{}", { status });
+    const isBucket = url.includes("/storage/v1/bucket/");
+    const status = method === "DELETE" ? 200 : isBucket ? (statuses.bucket ?? 200) : (statuses.upload ?? 200);
+    const says = isBucket ? statuses.bucketSays : statuses.uploadSays;
+    return new Response(says ? JSON.stringify({ message: says }) : "{}", { status });
   }) as typeof fetch;
 }
 const by = (result: Awaited<ReturnType<typeof checkStorage>>, name: string) => result.steps.find((step) => step.name === name);
@@ -69,9 +71,19 @@ const by = (result: Awaited<ReturnType<typeof checkStorage>>, name: string) => r
     const refused = await checkStorage(config(), fakeFetch({ upload: 403 }));
     assert.match(by(refused, "write")?.detail ?? "", /HTTP 403/);
     const noBucket = await checkStorage(config(), fakeFetch({ bucket: 401 }));
-    assert.match(by(noBucket, "bucket")?.detail ?? "", /refused the key \(HTTP 401\)/);
+    assert.match(by(noBucket, "bucket")?.detail ?? "", /rejected the key \(HTTP 401/);
     const missing = await checkStorage(config(), fakeFetch({ bucket: 404 }));
     assert.match(by(missing, "bucket")?.detail ?? "", /was not found/);
+  });
+
+  await test("HTTP 400 is told apart by what storage says: a rejected key is not a missing bucket", async () => {
+    const badKey = await checkStorage(config(), fakeFetch({ bucket: 400, bucketSays: "Invalid Compact JWS", upload: 400, uploadSays: "signature verification failed" }));
+    assert.match(by(badKey, "bucket")?.detail ?? "", /rejected the key.*Invalid Compact JWS.*copy the whole service_role key again/);
+    assert.match(by(badKey, "write")?.detail ?? "", /rejected the key.*signature verification failed/);
+    assert.match(badKey.hint, /rejected the key/);
+    const noBucket = await checkStorage(config(), fakeFetch({ bucket: 400, bucketSays: "Bucket not found" }));
+    assert.match(by(noBucket, "bucket")?.detail ?? "", /was not found.*Bucket not found/);
+    assert.ok(!/rejected the key/.test(by(noBucket, "bucket")?.detail ?? ""));
   });
 
   await test("storage that cannot be reached is reported, not thrown", async () => {

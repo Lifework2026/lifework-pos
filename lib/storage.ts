@@ -141,6 +141,27 @@ function readKey(key: string): { role: string | null; ref: string | null } | nul
   }
 }
 
+/** What Storage said, as plain text. Storage uses HTTP 400 both for a bucket that is missing and for a key it rejects, so the words decide. */
+async function reply(response: Response): Promise<string> {
+  try {
+    const body = (await response.text()).slice(0, 400);
+    try {
+      const json = JSON.parse(body) as { message?: unknown; error?: unknown };
+      return String(json.message ?? json.error ?? body);
+    } catch {
+      return body;
+    }
+  } catch {
+    return "";
+  }
+}
+
+const KEY_REJECTED = /jwt|jws|signature|token|unauthori[sz]ed|forbidden|apikey|invalid compact/i;
+
+function keyRejected(status: number, said: string): StorageCheckStep["detail"] {
+  return `Storage rejected the key (HTTP ${status}: "${said.slice(0, 120)}"). The SUPABASE_SERVICE_ROLE_KEY on this server is not the right key: copy the whole service_role key again from Supabase (Project Settings > API) with nothing missing or added, paste it into the environment, and redeploy.`;
+}
+
 /**
  * Checks the storage settings one step at a time and says what is wrong, without ever showing the key: the settings
  * are readable and sensible, the bucket answers, and a small test file can be written and removed. Used by the
@@ -181,9 +202,18 @@ export async function checkStorage(config: StorageConfig | null, fetchImpl: type
 
   try {
     const bucket = await fetchImpl(`${config.url}/storage/v1/bucket/${config.bucket}`, { headers: authHeaders(config) });
-    if (bucket.ok) steps.push({ name: "bucket", ok: true, detail: `The bucket "${config.bucket}" exists.` });
-    else if (bucket.status === 404 || bucket.status === 400) steps.push({ name: "bucket", ok: false, detail: `The bucket "${config.bucket}" was not found (HTTP ${bucket.status}). It is created on the first upload, or run supabase/storage-product-images.sql.` });
-    else steps.push({ name: "bucket", ok: false, detail: `Storage refused the key (HTTP ${bucket.status}).` });
+    if (bucket.ok) {
+      steps.push({ name: "bucket", ok: true, detail: `The bucket "${config.bucket}" exists.` });
+    } else {
+      const said = await reply(bucket);
+      if (KEY_REJECTED.test(said) || bucket.status === 401 || bucket.status === 403) {
+        steps.push({ name: "bucket", ok: false, detail: keyRejected(bucket.status, said) });
+      } else if (bucket.status === 404 || bucket.status === 400) {
+        steps.push({ name: "bucket", ok: false, detail: `The bucket "${config.bucket}" was not found (HTTP ${bucket.status}: "${said.slice(0, 80)}"). It is created on the first upload, or run supabase/storage-product-images.sql.` });
+      } else {
+        steps.push({ name: "bucket", ok: false, detail: `Storage answered HTTP ${bucket.status}: "${said.slice(0, 120)}".` });
+      }
+    }
   } catch {
     steps.push({ name: "bucket", ok: false, detail: "Storage could not be reached from this server." });
   }
@@ -197,8 +227,13 @@ export async function checkStorage(config: StorageConfig | null, fetchImpl: type
       headers: { ...authHeaders(config), "Content-Type": "image/png", "x-upsert": "false" },
       body: pixel as unknown as BodyInit,
     });
-    steps.push({ name: "write", ok: upload.ok, detail: upload.ok ? "A test file was written to the bucket." : `A test file could not be written (HTTP ${upload.status}).` });
-    if (upload.ok) await deleteProductImage(config, path, fetchImpl);
+    if (upload.ok) {
+      steps.push({ name: "write", ok: true, detail: "A test file was written to the bucket." });
+      await deleteProductImage(config, path, fetchImpl);
+    } else {
+      const said = await reply(upload);
+      steps.push({ name: "write", ok: false, detail: KEY_REJECTED.test(said) || upload.status === 401 || upload.status === 403 ? keyRejected(upload.status, said) : `A test file could not be written (HTTP ${upload.status}: "${said.slice(0, 120)}").` });
+    }
   } catch {
     steps.push({ name: "write", ok: false, detail: "A test file could not be written: storage could not be reached." });
   }
