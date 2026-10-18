@@ -29,8 +29,16 @@ test("the simulator only runs outside production; in production it is manual, ne
   assert.equal(resolveEdcMode({ EDC_MODE: "simulator", NODE_ENV: "production" }), "manual");
 });
 
-test("bridge stays bridge", () => {
-  assert.equal(resolveEdcMode({ EDC_MODE: "bridge", NODE_ENV: "production" }), "bridge");
+const bridgeSettings = { EDC_BRIDGE_URL: "https://bridge.example", EDC_BRIDGE_TOKEN: "t", EDC_WEBHOOK_SECRET: "s" };
+
+test("bridge stays bridge when its address, token and webhook secret are all set", () => {
+  assert.equal(resolveEdcMode({ EDC_MODE: "bridge", NODE_ENV: "production", ...bridgeSettings }), "bridge");
+});
+
+test("bridge with any setting missing cannot work, so the till takes slip references instead of showing an error", () => {
+  assert.equal(resolveEdcMode({ EDC_MODE: "bridge", NODE_ENV: "production" }), "manual");
+  assert.equal(resolveEdcMode({ EDC_MODE: "bridge", NODE_ENV: "production", ...bridgeSettings, EDC_BRIDGE_URL: "" }), "manual");
+  assert.equal(resolveEdcMode({ EDC_MODE: "bridge", NODE_ENV: "production", ...bridgeSettings, EDC_WEBHOOK_SECRET: "  " }), "manual");
 });
 
 test("the service refuses to start a terminal payment in manual mode, with a message that says what to do", () => {
