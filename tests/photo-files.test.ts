@@ -1,6 +1,6 @@
 // Matching a folder of photos to styles and colours by file name. Run with: npx tsx tests/photo-files.test.ts
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { matchColour, parsePhotoName, planPhotoFolder, type ColourOption, type ProductInfo } from "../lib/catalog/photo-files";
 
@@ -83,12 +83,16 @@ test("plan: files that are not pictures are ignored, not errors", () => {
   assert.equal(items.length, 1);
 });
 
-test("script: preview by default, keeps existing photos unless asked, and saves colour photos through the same rules as the admin page", () => {
-  const script = readFileSync(path.join(__dirname, "..", "scripts", "import-photo-folder.ts"), "utf8");
-  assert.ok(script.includes('args.includes("--apply")') && script.includes('args.includes("--replace")'));
-  assert.ok(script.indexOf("if (!apply)") < script.indexOf("replaceProductImage(db, store"), "the preview returns before any upload");
-  assert.ok(script.includes("productColorImage.upsert") && script.includes("PRODUCT_COLOR_IMAGE_SET") && script.includes("toWebp("));
-  assert.ok(existsSync(path.join(__dirname, "..", "scripts", "import-photo-folder.ts")));
+test("scripts: preview by default, keep existing photos unless asked, and save through the same rules as the admin page", () => {
+  const root = path.join(__dirname, "..");
+  const saver = readFileSync(path.join(root, "lib", "catalog", "photo-save.ts"), "utf8");
+  assert.ok(saver.includes("replaceProductImage(db, store") && saver.includes("productColorImage.upsert") && saver.includes("PRODUCT_COLOR_IMAGE_SET") && saver.includes("PRODUCT_IMAGE_SET"));
+  for (const name of ["import-photo-folder.ts", "cut-product-pages.ts"]) {
+    const script = readFileSync(path.join(root, "scripts", name), "utf8");
+    assert.ok(script.includes('args.includes("--apply")') && script.includes('args.includes("--replace")'), name);
+    assert.ok(script.indexOf("if (!apply)") < script.indexOf("savePhoto(prisma, store"), `${name}: the preview returns before any upload`);
+    assert.ok(script.includes("toWebp("), name);
+  }
 });
 
 console.log(`\n${passed} photo-file tests passed`);

@@ -109,7 +109,7 @@ async function main(): Promise<void> {
 
   const { getStorageConfig } = await import("../lib/storage");
   const { storeFor } = await import("../lib/product-image-store");
-  const { replaceProductImage } = await import("../lib/product-image-binding");
+  const { savePhoto } = await import("../lib/catalog/photo-save");
   const config = getStorageConfig();
   if (!config) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not set, so photos cannot upload.");
   const store = storeFor(config);
@@ -120,43 +120,8 @@ async function main(): Promise<void> {
     const target = item.target;
     const photo = encoded.get(item.file);
     if (!target || !photo) continue;
-    const bytes = new Uint8Array(photo.buffer);
     try {
-      if (target.kind === "colour") {
-        const key = { productId_colorId: { productId: target.productId, colorId: target.colorId } };
-        const db = {
-          find: async () => {
-            const row = await prisma.productColorImage.findUnique({ where: key, select: { imageUrl: true, imagePath: true } });
-            return { id: target.productId, imageUrl: row?.imageUrl ?? null, imagePath: row?.imagePath ?? null };
-          },
-          save: async (_id: string, image: { url: string; path: string } | null) => {
-            if (image) {
-              await prisma.productColorImage.upsert({
-                where: key,
-                create: { productId: target.productId, colorId: target.colorId, imageUrl: image.url, imagePath: image.path },
-                update: { imageUrl: image.url, imagePath: image.path },
-              });
-            } else {
-              await prisma.productColorImage.deleteMany({ where: { productId: target.productId, colorId: target.colorId } });
-            }
-          },
-        };
-        const stored = await replaceProductImage(db, store, target.productId, bytes, { mime: "image/webp", ext: "webp" });
-        await prisma.auditLog.create({
-          data: { action: "PRODUCT_COLOR_IMAGE_SET", entityType: "Product", entityId: target.productId, details: { colorId: target.colorId, path: stored.path, source: "import-photo-folder", file: item.file } },
-        });
-      } else {
-        const db = {
-          find: (id: string) => prisma.product.findUnique({ where: { id }, select: { id: true, imageUrl: true, imagePath: true } }),
-          save: async (id: string, image: { url: string; path: string } | null) => {
-            await prisma.product.update({ where: { id }, data: { imageUrl: image?.url ?? null, imagePath: image?.path ?? null } });
-          },
-        };
-        const stored = await replaceProductImage(db, store, target.productId, bytes, { mime: "image/webp", ext: "webp" });
-        await prisma.auditLog.create({
-          data: { action: "PRODUCT_IMAGE_SET", entityType: "Product", entityId: target.productId, details: { path: stored.path, source: "import-photo-folder", file: item.file } },
-        });
-      }
+      await savePhoto(prisma, store, target, new Uint8Array(photo.buffer), { script: "import-photo-folder", file: item.file });
       saved++;
     } catch (err) {
       failed.push(`${item.file}: ${err instanceof Error ? err.message : String(err)}`);
